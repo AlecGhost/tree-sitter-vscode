@@ -13,13 +13,27 @@
   "categories": [
     "Programming Languages"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onLanguage"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "tree-sitter-vscode.helloWorld",
         "title": "Hello World"
+      }
+    ],
+    "configuration":[
+      {
+        "title": "tree-sitter-vscode config",
+        "properties": {
+          "tree-sitter-vscode.languageConfigs": {
+            "description": "A list of objects with the keys \"lang\", \"parser\" and \"highlights\"",
+            "type":"array",
+            "default": []
+          }
+        }
       }
     ]
   },
