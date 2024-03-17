@@ -15,8 +15,9 @@ const TOKEN_MODIFIERS = [
 ];
 const LEGEND = new vscode.SemanticTokensLegend(TOKEN_TYPES, TOKEN_MODIFIERS);
 
-type Config = { lang: string, parser: string, highlights: string };
-type Language = { parser: Parser, highlightQuery: Parser.Query }
+type Config = { lang: string, parser: string, highlights: string, injections?: string };
+type Language = { parser: Parser, highlightQuery: Parser.Query, injectionQuery?: Parser.Query }
+type Token = { range: vscode.Range, type: string, modifiers: string[] }
 
 async function initLanguage(config: Config): Promise<Language> {
 	await Parser.init().catch();
@@ -25,11 +26,26 @@ async function initLanguage(config: Config): Promise<Language> {
 	parser.setLanguage(lang);
 	const queryText = fs.readFileSync(config.highlights, "utf-8");
 	const highlightQuery = lang.query(queryText);
-	return { parser: parser, highlightQuery: highlightQuery };
+	let injectionQuery = undefined;
+	if (config.injections !== undefined) {
+		const injectionText = fs.readFileSync(config.injections, "utf-8");
+		injectionQuery = lang.query(injectionText);
+	}
+	return { parser, highlightQuery, injectionQuery };
 }
 
 function convertPosition(pos: Parser.Point): vscode.Position {
 	return new vscode.Position(pos.row, pos.column);
+}
+
+function addPosition(range: vscode.Range, pos: vscode.Position): vscode.Range {
+	const start = (range.start.line == 0)
+		? new vscode.Position(range.start.line + pos.line, range.start.character + pos.character)
+		: new vscode.Position(range.start.line + pos.line, range.start.character);
+	const end = (range.end.line == 0)
+		? new vscode.Position(range.end.line + pos.line, range.end.character + pos.character)
+		: new vscode.Position(range.end.line + pos.line, range.end.character);
+	return new vscode.Range(start, end);
 }
 
 function parseCaptureName(name: string): { type: string, modifiers: string[] } {
@@ -51,6 +67,60 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 		this.configs = configs;
 	}
 
+	matchesToTokens(matches: Parser.QueryMatch[]): Token[] {
+		return matches
+			.flatMap(match => match.captures)
+			.flatMap(capture => {
+				let { type, modifiers: modifiers } = parseCaptureName(capture.name);
+				let start = convertPosition(capture.node.startPosition);
+				let end = convertPosition(capture.node.endPosition);
+				if (TOKEN_TYPES.includes(type)) {
+					const validModifiers = modifiers.filter(modifier => TOKEN_MODIFIERS.includes(modifier));
+					const token: Token = { range: new vscode.Range(start, end), type, modifiers: validModifiers };
+					return [token];
+				} else {
+					return [];
+				}
+			});
+	}
+
+	async getInjections(text: string, injectionQuery: Parser.Query, node: Parser.SyntaxNode): Promise<Token[]> {
+		const matches = injectionQuery.matches(node);
+		const tokens = matches
+			.flatMap(match => match.captures)
+			.flatMap(async capture => {
+				// injection based on capture name
+				// TODO: add support for official injection queries
+				const lang = capture.name;
+				const config = this.configs.find(config => config.lang === lang);
+				if (config !== undefined) {
+					if (!(lang in this.tsLangs)) {
+						this.tsLangs[lang] = await initLanguage(config);
+					}
+					const { parser, highlightQuery, injectionQuery } = this.tsLangs[lang];
+					const captureText = text.substring(capture.node.startIndex, capture.node.endIndex);
+					const tree = parser.parse(captureText);
+					const matches = highlightQuery.matches(tree.rootNode);
+					let tokens = this.matchesToTokens(matches);
+					if (injectionQuery !== undefined) {
+						const injectionTokens = await this.getInjections(captureText, injectionQuery, tree.rootNode);
+						tokens = tokens.concat(injectionTokens);
+					}
+					tokens = tokens
+						.map(token => {
+							return {
+								range: addPosition(token.range, convertPosition(capture.node.startPosition)),
+								type: token.type,
+								modifiers: token.modifiers
+							}
+						});
+					return tokens;
+				}
+				return [];
+			});
+		return (await Promise.all(tokens)).flat();
+	}
+
 	async provideDocumentSemanticTokens(
 		document: vscode.TextDocument,
 		token: vscode.CancellationToken
@@ -63,21 +133,17 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 			}
 			this.tsLangs[lang] = await initLanguage(config);
 		}
-		const { parser, highlightQuery } = this.tsLangs[lang];
-		const tree = parser.parse(document.getText());
+		const { parser, highlightQuery, injectionQuery } = this.tsLangs[lang];
+		const text = document.getText();
+		const tree = parser.parse(text);
 		const matches = highlightQuery.matches(tree.rootNode);
+		let tokens = this.matchesToTokens(matches);
+		if (injectionQuery !== undefined) {
+			const injectionTokens = await this.getInjections(text, injectionQuery, tree.rootNode);
+			tokens = tokens.concat(injectionTokens);
+		}
 		const builder = new vscode.SemanticTokensBuilder(LEGEND);
-		matches.forEach((match) => {
-			match.captures.forEach((capture) => {
-				let { type, modifiers: modifiers } = parseCaptureName(capture.name);
-				let start = convertPosition(capture.node.startPosition);
-				let end = convertPosition(capture.node.endPosition);
-				if (TOKEN_TYPES.includes(type)) {
-					const validModifiers = modifiers.filter(modifier => TOKEN_MODIFIERS.includes(modifier));
-					builder.push(new vscode.Range(start, end), type, validModifiers);
-				}
-			});
-		});
+		tokens.forEach(token => builder.push(token.range, token.type, token.modifiers));
 		return builder.build();
 	}
 }
@@ -90,6 +156,7 @@ function parseConfigs(configs: any): Config[] {
 		const lang = config["lang"];
 		const parser = config["parser"];
 		const highlights = config["highlights"];
+		const injections = config["injections"];
 		if (typeof lang !== "string") {
 			throw new TypeError("Expected `lang` to be a string.");
 		}
@@ -99,7 +166,10 @@ function parseConfigs(configs: any): Config[] {
 		if (typeof highlights !== "string") {
 			throw new TypeError("Expected `highlights` to be a string.");
 		}
-		return { lang: lang, parser: parser, highlights: highlights };
+		if (injections !== undefined && typeof injections !== "string") {
+			throw new TypeError("Expected `injections` to be a string.");
+		}
+		return { lang, parser, highlights, injections };
 	});
 }
 
