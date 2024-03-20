@@ -59,6 +59,52 @@ function parseCaptureName(name: string): { type: string, modifiers: string[] } {
 	}
 }
 
+/**
+ * Semantic tokens cannot span multiple lines,
+ * so if the range doesn't end in the same line,
+ * one token for each line is created.
+ */
+function splitToken(token: Token): Token[] {
+	const start = token.range.start;
+	const end = token.range.end;
+	if (start.line != end.line) {
+		// 100_0000 is chosen as the arbitrary length, since the actual line length is unknown.
+		// Choosing a big number works, while `Number.MAX_VALUE` seems to confuse VSCode.
+		const max_line_length = 100_000;
+		const lineDiff = end.line - start.line;
+		if (lineDiff < 0) {
+			throw new RangeError("Invalid token range");
+		}
+		let tokens: Token[] = [];
+		// token for the first line, beginning at the start char
+		tokens.push({
+			range: new vscode.Range(start, new vscode.Position(start.line, max_line_length)),
+			type: token.type,
+			modifiers: token.modifiers
+		});
+		// tokens for intermediate lines, spanning from 0 to max_line_length
+		for (let i = 1; i < lineDiff; i++) {
+			const middleToken: Token = {
+				range: new vscode.Range(
+					new vscode.Position(start.line + i, 0),
+					new vscode.Position(start.line + i, max_line_length)),
+				type: token.type,
+				modifiers: token.modifiers,
+			};
+			tokens.push(middleToken);
+		}
+		// token for the last line, ending at the end char
+		tokens.push({
+			range: new vscode.Range(new vscode.Position(end.line, 0), end),
+			type: token.type,
+			modifiers: token.modifiers
+		});
+		return tokens;
+	} else {
+		return [token];
+	}
+}
+
 class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 	private readonly configs: Config[];
 	private tsLangs: { [lang: string]: Language } = {};
@@ -76,8 +122,12 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 				let end = convertPosition(capture.node.endPosition);
 				if (TOKEN_TYPES.includes(type)) {
 					const validModifiers = modifiers.filter(modifier => TOKEN_MODIFIERS.includes(modifier));
-					const token: Token = { range: new vscode.Range(start, end), type, modifiers: validModifiers };
-					return [token];
+					const token: Token = {
+						range: new vscode.Range(start, end),
+						type: type,
+						modifiers: validModifiers
+					}
+					return splitToken(token);
 				} else {
 					return [];
 				}
