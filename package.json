@@ -24,13 +24,13 @@
         "title": "Hello World"
       }
     ],
-    "configuration":[
+    "configuration": [
       {
         "title": "tree-sitter-vscode config",
         "properties": {
           "tree-sitter-vscode.languageConfigs": {
             "description": "A list of objects with the keys \"lang\", \"parser\" and \"highlights\". Optionally, \"injections\" can be added.",
-            "type":"array",
+            "type": "array",
             "default": []
           }
         }
@@ -61,6 +61,7 @@
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
+    "@vscode/vsce": "^2.24.0",
     "web-tree-sitter": "^0.21.0"
   }
 }
