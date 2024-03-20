@@ -2,6 +2,10 @@
   "name": "tree-sitter-vscode",
   "displayName": "tree-sitter-vscode",
   "description": "Tree-sitter integration into VSCode",
+  "author": {
+    "name": "AlecGhost",
+    "url": "https://github.com/AlecGhost"
+  },
   "version": "0.0.1",
   "license": "Apache-2.0",
   "repository": {
