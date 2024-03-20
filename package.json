@@ -22,12 +22,6 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
-    "commands": [
-      {
-        "command": "tree-sitter-vscode.helloWorld",
-        "title": "Hello World"
-      }
-    ],
     "configuration": [
       {
         "title": "tree-sitter-vscode config",
