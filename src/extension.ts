@@ -134,39 +134,74 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 			});
 	}
 
-	async getInjections(text: string, injectionQuery: Parser.Query, node: Parser.SyntaxNode): Promise<Token[]> {
+	/**
+	 * Determine the language to be injected into the given match.
+	 */
+	async getInjectionLang(match: Parser.QueryMatch): Promise<Language | null> {
+		const {
+			"injection.language": injectionLanguage,
+			// TODO: add support for self and parent injections
+			// "injection.self": injectionSelf,
+			// "injection.parent": injectionParent
+		} = (match as any).setProperties || {};
+		const lang =
+			// a hard coded language overrides all other methods
+			(typeof injectionLanguage == "string" ? injectionLanguage : undefined)
+			// dynamically determined language
+			|| match.captures.find(capture => capture.name === "injection.language")?.node.text
+			// custom language determination by capture name
+			|| match.captures.find(capture => this.configs.map(config => config.lang).includes(capture.name))?.name;
+		if (lang !== undefined) {
+			const config = this.configs.find(config => config.lang === lang);
+			if (config !== undefined) {
+				if (!(lang in this.tsLangs)) {
+					this.tsLangs[lang] = await initLanguage(config);
+				}
+				return this.tsLangs[lang];
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Get the tokens for a single capture with the given language parser.
+	 * Calls `getInjections` for nested injections.
+	 */
+	async captureToTokens(capture: Parser.QueryCapture, lang: Language): Promise<Token[]> {
+		const { parser, highlightQuery, injectionQuery } = lang;
+		const captureText = capture.node.text;
+		const tree = parser.parse(captureText);
+		const matches = highlightQuery.matches(tree.rootNode);
+		let tokens = this.matchesToTokens(matches);
+		if (injectionQuery !== undefined) {
+			const injectionTokens = await this.getInjections(injectionQuery, tree.rootNode);
+			tokens = tokens.concat(injectionTokens);
+		}
+		tokens = tokens
+			.map(token => {
+				return {
+					range: addPosition(token.range, convertPosition(capture.node.startPosition)),
+					type: token.type,
+					modifiers: token.modifiers
+				}
+			});
+		return tokens;
+	}
+
+	/**
+	 * Matches the given injection query against the given node and returns the highlighting tokens.
+	 * This also works for nested injections.
+	 */
+	async getInjections(injectionQuery: Parser.Query, node: Parser.SyntaxNode): Promise<Token[]> {
 		const matches = injectionQuery.matches(node);
 		const tokens = matches
-			.flatMap(match => match.captures)
-			.flatMap(async capture => {
-				// injection based on capture name
-				// TODO: add support for official injection queries
-				const lang = capture.name;
-				const config = this.configs.find(config => config.lang === lang);
-				if (config !== undefined) {
-					if (!(lang in this.tsLangs)) {
-						this.tsLangs[lang] = await initLanguage(config);
-					}
-					const { parser, highlightQuery, injectionQuery } = this.tsLangs[lang];
-					const captureText = text.substring(capture.node.startIndex, capture.node.endIndex);
-					const tree = parser.parse(captureText);
-					const matches = highlightQuery.matches(tree.rootNode);
-					let tokens = this.matchesToTokens(matches);
-					if (injectionQuery !== undefined) {
-						const injectionTokens = await this.getInjections(captureText, injectionQuery, tree.rootNode);
-						tokens = tokens.concat(injectionTokens);
-					}
-					tokens = tokens
-						.map(token => {
-							return {
-								range: addPosition(token.range, convertPosition(capture.node.startPosition)),
-								type: token.type,
-								modifiers: token.modifiers
-							}
-						});
-					return tokens;
+			.map(async match => {
+				const lang = await this.getInjectionLang(match);
+				if (lang === null) {
+					return [];
 				}
-				return [];
+				const captureTokens = match.captures.map(async capture => await this.captureToTokens(capture, lang));
+				return (await Promise.all(captureTokens)).flat();
 			});
 		return (await Promise.all(tokens)).flat();
 	}
@@ -189,7 +224,7 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 		const matches = highlightQuery.matches(tree.rootNode);
 		let tokens = this.matchesToTokens(matches);
 		if (injectionQuery !== undefined) {
-			const injectionTokens = await this.getInjections(text, injectionQuery, tree.rootNode);
+			const injectionTokens = await this.getInjections(injectionQuery, tree.rootNode);
 			tokens = tokens.concat(injectionTokens);
 		}
 		const builder = new vscode.SemanticTokensBuilder(LEGEND);
