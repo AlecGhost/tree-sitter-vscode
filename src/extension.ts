@@ -114,7 +114,7 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 	}
 
 	matchesToTokens(matches: Parser.QueryMatch[]): Token[] {
-		const unsplit_tokens : Token [] = matches
+		const unsplit_tokens: Token[] = matches
 			.flatMap(match => match.captures)
 			.flatMap(capture => {
 				let { type, modifiers: modifiers } = parseCaptureName(capture.name);
@@ -141,13 +141,13 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 
 			if (contained.length > 0) {
 				// Sort contained tokens by their start position
-				const sorted_contained = contained.sort((a, b) => 
+				const sorted_contained = contained.sort((a, b) =>
 					a.range.start.compareTo(b.range.start)
 				);
-				
+
 				let result_tokens = [];
 				let current_pos = token.range.start;
-				
+
 				// Create tokens for the gaps between contained tokens
 				for (const contained_token of sorted_contained) {
 					// If there's a gap before this contained token, create a token for it
@@ -156,28 +156,25 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 							range: new vscode.Range(current_pos, contained_token.range.start),
 							type: token.type,
 							modifiers: token.modifiers
-							}
-						);
+						});
 					}
 					current_pos = contained_token.range.end;
 				}
-				
+
 				// Add token for the gap after the last contained token if needed
 				if (current_pos.compareTo(token.range.end) < 0) {
 					result_tokens.push({
 						range: new vscode.Range(current_pos, token.range.end),
 						type: token.type,
 						modifiers: token.modifiers
-						}
-					);
+					});
 				}
-				
+
 				return result_tokens;
 			} else {
 				return token;
 			}
 		}).flatMap(splitToken);
-
 	}
 
 	/**
