@@ -130,7 +130,7 @@ function splitToken(token: Token): Token[] {
 	if (start.line != end.line) {
 		// 100_0000 is chosen as the arbitrary length, since the actual line length is unknown.
 		// Choosing a big number works, while `Number.MAX_VALUE` seems to confuse VSCode.
-		const max_line_length = 100_000;
+		const maxLineLength = 100_000;
 		const lineDiff = end.line - start.line;
 		if (lineDiff < 0) {
 			throw new RangeError("Invalid token range");
@@ -138,16 +138,16 @@ function splitToken(token: Token): Token[] {
 		let tokens: Token[] = [];
 		// token for the first line, beginning at the start char
 		tokens.push({
-			range: new vscode.Range(start, new vscode.Position(start.line, max_line_length)),
+			range: new vscode.Range(start, new vscode.Position(start.line, maxLineLength)),
 			type: token.type,
 			modifiers: token.modifiers
 		});
-		// tokens for intermediate lines, spanning from 0 to max_line_length
+		// tokens for intermediate lines, spanning from 0 to maxLineLength
 		for (let i = 1; i < lineDiff; i++) {
 			const middleToken: Token = {
 				range: new vscode.Range(
 					new vscode.Position(start.line + i, 0),
-					new vscode.Position(start.line + i, max_line_length)),
+					new vscode.Position(start.line + i, maxLineLength)),
 				type: token.type,
 				modifiers: token.modifiers,
 			};
@@ -220,7 +220,7 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 	}
 
 	matchesToTokens(matches: Parser.QueryMatch[]): Token[] {
-		const unsplit_tokens: Token[] = matches
+		const unsplitTokens: Token[] = matches
 			.flatMap(match => match.captures)
 			.flatMap(capture => {
 				let { type, modifiers: modifiers } = parseCaptureName(capture.name);
@@ -239,44 +239,44 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 				}
 			});
 
-		return unsplit_tokens.flatMap(token => {
+		return unsplitTokens.flatMap(token => {
 			// Get all tokens contained within this token
-			const contained = unsplit_tokens.filter(o_t =>
-				(!(token.range.isEqual(o_t.range))) && token.range.contains(o_t.range)
+			const contained = unsplitTokens.filter(t =>
+				(!(token.range.isEqual(t.range))) && token.range.contains(t.range)
 			);
 
 			if (contained.length > 0) {
 				// Sort contained tokens by their start position
-				const sorted_contained = contained.sort((a, b) =>
+				const sortedContained = contained.sort((a, b) =>
 					a.range.start.compareTo(b.range.start)
 				);
 
-				let result_tokens = [];
-				let current_pos = token.range.start;
+				let resultTokens = [];
+				let currentPos = token.range.start;
 
 				// Create tokens for the gaps between contained tokens
-				for (const contained_token of sorted_contained) {
+				for (const containedToken of sortedContained) {
 					// If there's a gap before this contained token, create a token for it
-					if (current_pos.compareTo(contained_token.range.start) < 0) {
-						result_tokens.push({
-							range: new vscode.Range(current_pos, contained_token.range.start),
+					if (currentPos.compareTo(containedToken.range.start) < 0) {
+						resultTokens.push({
+							range: new vscode.Range(currentPos, containedToken.range.start),
 							type: token.type,
 							modifiers: token.modifiers
 						});
 					}
-					current_pos = contained_token.range.end;
+					currentPos = containedToken.range.end;
 				}
 
 				// Add token for the gap after the last contained token if needed
-				if (current_pos.compareTo(token.range.end) < 0) {
-					result_tokens.push({
-						range: new vscode.Range(current_pos, token.range.end),
+				if (currentPos.compareTo(token.range.end) < 0) {
+					resultTokens.push({
+						range: new vscode.Range(currentPos, token.range.end),
 						type: token.type,
 						modifiers: token.modifiers
 					});
 				}
 
-				return result_tokens;
+				return resultTokens;
 			} else {
 				return token;
 			}
