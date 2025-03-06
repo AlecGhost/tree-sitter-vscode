@@ -189,8 +189,18 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 			}
 			this.tsLangs[lang] = await initLanguage(config);
 		}
-		const { parser, highlightQuery, injectionQuery } = this.tsLangs[lang];
-		const text = document.getText();
+		const tokens = await this.parseToTokens(this.tsLangs[lang], document.getText(), { row: 0, column: 0 });
+		const builder = new vscode.SemanticTokensBuilder(LEGEND);
+		tokens.forEach(token => builder.push(token.range, token.type, token.modifiers));
+		return builder.build();
+	}
+
+	/**
+	 * Parses the given text with the given language parser and returns the highlighting tokens.
+	 * Calls `getInjections` for nested injections.
+	 */
+	async parseToTokens(lang: Language, text: string, startPosition: Parser.Point): Promise<Token[]> {
+		const { parser, highlightQuery, injectionQuery } = lang;
 		const tree = parser.parse(text);
 		const matches = highlightQuery.matches(tree.rootNode);
 		let tokens = this.matchesToTokens(matches);
@@ -198,9 +208,15 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 			const injectionTokens = await this.getInjections(injectionQuery, tree.rootNode);
 			tokens = tokens.concat(injectionTokens);
 		}
-		const builder = new vscode.SemanticTokensBuilder(LEGEND);
-		tokens.forEach(token => builder.push(token.range, token.type, token.modifiers));
-		return builder.build();
+		tokens = tokens
+			.map(token => {
+				return {
+					range: addPosition(token.range, convertPosition(startPosition)),
+					type: token.type,
+					modifiers: token.modifiers
+				}
+			});
+		return tokens;
 	}
 
 	matchesToTokens(matches: Parser.QueryMatch[]): Token[] {
@@ -308,34 +324,10 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 				if (lang === null) {
 					return [];
 				}
-				const captureTokens = match.captures.map(async capture => await this.captureToTokens(capture, lang));
+				const captureTokens = match.captures.map(
+					async capture => await this.parseToTokens(lang, capture.node.text, capture.node.startPosition));
 				return (await Promise.all(captureTokens)).flat();
 			});
 		return (await Promise.all(tokens)).flat();
-	}
-
-	/**
-	 * Get the tokens for a single capture with the given language parser.
-	 * Calls `getInjections` for nested injections.
-	 */
-	async captureToTokens(capture: Parser.QueryCapture, lang: Language): Promise<Token[]> {
-		const { parser, highlightQuery, injectionQuery } = lang;
-		const captureText = capture.node.text;
-		const tree = parser.parse(captureText);
-		const matches = highlightQuery.matches(tree.rootNode);
-		let tokens = this.matchesToTokens(matches);
-		if (injectionQuery !== undefined) {
-			const injectionTokens = await this.getInjections(injectionQuery, tree.rootNode);
-			tokens = tokens.concat(injectionTokens);
-		}
-		tokens = tokens
-			.map(token => {
-				return {
-					range: addPosition(token.range, convertPosition(capture.node.startPosition)),
-					type: token.type,
-					modifiers: token.modifiers
-				}
-			});
-		return tokens;
 	}
 }
