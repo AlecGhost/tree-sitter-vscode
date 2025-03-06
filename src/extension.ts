@@ -205,16 +205,43 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 		const matches = highlightQuery.matches(tree.rootNode);
 		let tokens = this.matchesToTokens(matches);
 		if (injectionQuery !== undefined) {
-			const injectionTokens = await this.getInjections(injectionQuery, tree.rootNode);
-			tokens = tokens.concat(injectionTokens);
+			const injections = await this.getInjections(injectionQuery, tree.rootNode);
+			// merge the injection tokens with the main tokens
+			for (const injection of injections) {
+				if (injection.length > 0) {
+					const sorted = injection.sort((a, b) =>
+						a.range.start.compareTo(b.range.start)
+					);
+					const first = sorted[0];
+					const last = sorted[sorted.length - 1];
+					const range = new vscode.Range(first.range.start, last.range.end);
+					tokens = tokens
+						// remove all tokens that are contained in an injection
+						.filter(token => !range.contains(token.range))
+						// split tokens that are partially contained in an injection
+						.flatMap(token => {
+							if (token.range.intersection(range) !== undefined) {
+								let newTokens: Token[] = [];
+								if (token.range.start.isBefore(range.start)) {
+									const before = new vscode.Range(token.range.start, new vscode.Position(range.start.line, range.start.character - 1));
+									newTokens.push({ ...token, range: before });
+								}
+								if (token.range.end.isAfter(range.end)) {
+									const after = new vscode.Range(new vscode.Position(range.end.line, range.end.character + 1), token.range.end);
+									newTokens.push({ ...token, range: after });
+								}
+								return newTokens;
+							} else {
+								return [token];
+							}
+						});
+				}
+			}
+			tokens = tokens.concat(injections.flat());
 		}
 		tokens = tokens
 			.map(token => {
-				return {
-					range: addPosition(token.range, convertPosition(startPosition)),
-					type: token.type,
-					modifiers: token.modifiers
-				}
+				return { ...token, range: addPosition(token.range, convertPosition(startPosition)) }
 			});
 		return tokens;
 	}
@@ -259,9 +286,8 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 					// If there's a gap before this contained token, create a token for it
 					if (currentPos.compareTo(containedToken.range.start) < 0) {
 						resultTokens.push({
+							...token,
 							range: new vscode.Range(currentPos, containedToken.range.start),
-							type: token.type,
-							modifiers: token.modifiers
 						});
 					}
 					currentPos = containedToken.range.end;
@@ -270,9 +296,8 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 				// Add token for the gap after the last contained token if needed
 				if (currentPos.compareTo(token.range.end) < 0) {
 					resultTokens.push({
+						...token,
 						range: new vscode.Range(currentPos, token.range.end),
-						type: token.type,
-						modifiers: token.modifiers
 					});
 				}
 
@@ -316,7 +341,7 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 	 * Matches the given injection query against the given node and returns the highlighting tokens.
 	 * This also works for nested injections.
 	 */
-	async getInjections(injectionQuery: Parser.Query, node: Parser.SyntaxNode): Promise<Token[]> {
+	async getInjections(injectionQuery: Parser.Query, node: Parser.SyntaxNode): Promise<Token[][]> {
 		const matches = injectionQuery.matches(node);
 		const tokens = matches
 			.map(async match => {
@@ -328,6 +353,6 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 					async capture => await this.parseToTokens(lang, capture.node.text, capture.node.startPosition));
 				return (await Promise.all(captureTokens)).flat();
 			});
-		return (await Promise.all(tokens)).flat();
+		return await Promise.all(tokens);
 	}
 }
