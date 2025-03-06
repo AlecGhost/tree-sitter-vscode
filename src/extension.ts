@@ -19,6 +19,53 @@ type Config = { lang: string, parser: string, highlights: string, injections?: s
 type Language = { parser: Parser, highlightQuery: Parser.Query, injectionQuery?: Parser.Query }
 type Token = { range: vscode.Range, type: string, modifiers: string[] }
 
+/**
+ * Called once on extension initialization.
+ * It reads the configuration and registers the semantic tokens provider.
+ */
+export function activate(context: vscode.ExtensionContext) {
+	const rawConfigs = vscode.workspace.getConfiguration("tree-sitter-vscode").get("languageConfigs");
+	const configs = parseConfigs(rawConfigs);
+	const languageMap = configs.map(config => { return { language: config.lang }; });
+	const provider = vscode.languages.registerDocumentSemanticTokensProvider(
+		languageMap,
+		new SemanticTokensProvider(configs),
+		LEGEND,
+	)
+	context.subscriptions.push(provider);
+}
+
+/**
+ * Called when the extension is deactivated.
+ */
+export function deactivate() { }
+
+function parseConfigs(configs: any): Config[] {
+	if (!Array.isArray(configs)) {
+		throw new TypeError("Expected a list.");
+	}
+	return configs.map(config => {
+		const lang = config["lang"];
+		const parser = config["parser"];
+		const highlights = config["highlights"];
+		const injections = config["injections"];
+		if (typeof lang !== "string") {
+			throw new TypeError("Expected `lang` to be a string.");
+		}
+		if (typeof parser !== "string") {
+			throw new TypeError("Expected `parser` to be a string.");
+		}
+		if (typeof highlights !== "string") {
+			throw new TypeError("Expected `highlights` to be a string.");
+		}
+		if (injections !== undefined && typeof injections !== "string") {
+			throw new TypeError("Expected `injections` to be a string.");
+		}
+		return { lang, parser, highlights, injections };
+	});
+}
+
+
 async function initLanguage(config: Config): Promise<Language> {
 	await Parser.init().catch();
 	const parser = new Parser;
@@ -111,6 +158,36 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 
 	constructor(configs: Config[]) {
 		this.configs = configs;
+	}
+
+	/**
+	 * Called regularly by VSCode to provide semantic tokens for the given document.
+	 * It parses the document with the corresponding language parser and returns the tokens.
+	 */
+	async provideDocumentSemanticTokens(
+		document: vscode.TextDocument,
+		token: vscode.CancellationToken
+	) {
+		const lang = document.languageId;
+		if (!(lang in this.tsLangs)) {
+			const config = this.configs.find(config => config.lang === lang);
+			if (config === undefined) {
+				throw new Error("No config for lang provided.");
+			}
+			this.tsLangs[lang] = await initLanguage(config);
+		}
+		const { parser, highlightQuery, injectionQuery } = this.tsLangs[lang];
+		const text = document.getText();
+		const tree = parser.parse(text);
+		const matches = highlightQuery.matches(tree.rootNode);
+		let tokens = this.matchesToTokens(matches);
+		if (injectionQuery !== undefined) {
+			const injectionTokens = await this.getInjections(injectionQuery, tree.rootNode);
+			tokens = tokens.concat(injectionTokens);
+		}
+		const builder = new vscode.SemanticTokensBuilder(LEGEND);
+		tokens.forEach(token => builder.push(token.range, token.type, token.modifiers));
+		return builder.build();
 	}
 
 	matchesToTokens(matches: Parser.QueryMatch[]): Token[] {
@@ -207,6 +284,24 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 	}
 
 	/**
+	 * Matches the given injection query against the given node and returns the highlighting tokens.
+	 * This also works for nested injections.
+	 */
+	async getInjections(injectionQuery: Parser.Query, node: Parser.SyntaxNode): Promise<Token[]> {
+		const matches = injectionQuery.matches(node);
+		const tokens = matches
+			.map(async match => {
+				const lang = await this.getInjectionLang(match);
+				if (lang === null) {
+					return [];
+				}
+				const captureTokens = match.captures.map(async capture => await this.captureToTokens(capture, lang));
+				return (await Promise.all(captureTokens)).flat();
+			});
+		return (await Promise.all(tokens)).flat();
+	}
+
+	/**
 	 * Get the tokens for a single capture with the given language parser.
 	 * Calls `getInjections` for nested injections.
 	 */
@@ -230,87 +325,4 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 			});
 		return tokens;
 	}
-
-	/**
-	 * Matches the given injection query against the given node and returns the highlighting tokens.
-	 * This also works for nested injections.
-	 */
-	async getInjections(injectionQuery: Parser.Query, node: Parser.SyntaxNode): Promise<Token[]> {
-		const matches = injectionQuery.matches(node);
-		const tokens = matches
-			.map(async match => {
-				const lang = await this.getInjectionLang(match);
-				if (lang === null) {
-					return [];
-				}
-				const captureTokens = match.captures.map(async capture => await this.captureToTokens(capture, lang));
-				return (await Promise.all(captureTokens)).flat();
-			});
-		return (await Promise.all(tokens)).flat();
-	}
-
-	async provideDocumentSemanticTokens(
-		document: vscode.TextDocument,
-		token: vscode.CancellationToken
-	) {
-		const lang = document.languageId;
-		if (!(lang in this.tsLangs)) {
-			const config = this.configs.find(config => config.lang === lang);
-			if (config === undefined) {
-				throw new Error("No config for lang provided.");
-			}
-			this.tsLangs[lang] = await initLanguage(config);
-		}
-		const { parser, highlightQuery, injectionQuery } = this.tsLangs[lang];
-		const text = document.getText();
-		const tree = parser.parse(text);
-		const matches = highlightQuery.matches(tree.rootNode);
-		let tokens = this.matchesToTokens(matches);
-		if (injectionQuery !== undefined) {
-			const injectionTokens = await this.getInjections(injectionQuery, tree.rootNode);
-			tokens = tokens.concat(injectionTokens);
-		}
-		const builder = new vscode.SemanticTokensBuilder(LEGEND);
-		tokens.forEach(token => builder.push(token.range, token.type, token.modifiers));
-		return builder.build();
-	}
 }
-
-function parseConfigs(configs: any): Config[] {
-	if (!Array.isArray(configs)) {
-		throw new TypeError("Expected a list.");
-	}
-	return configs.map(config => {
-		const lang = config["lang"];
-		const parser = config["parser"];
-		const highlights = config["highlights"];
-		const injections = config["injections"];
-		if (typeof lang !== "string") {
-			throw new TypeError("Expected `lang` to be a string.");
-		}
-		if (typeof parser !== "string") {
-			throw new TypeError("Expected `parser` to be a string.");
-		}
-		if (typeof highlights !== "string") {
-			throw new TypeError("Expected `highlights` to be a string.");
-		}
-		if (injections !== undefined && typeof injections !== "string") {
-			throw new TypeError("Expected `injections` to be a string.");
-		}
-		return { lang, parser, highlights, injections };
-	});
-}
-
-export function activate(context: vscode.ExtensionContext) {
-	const rawConfigs = vscode.workspace.getConfiguration("tree-sitter-vscode").get("languageConfigs");
-	const configs = parseConfigs(rawConfigs);
-	const languageMap = configs.map(config => { return { language: config.lang }; });
-	const provider = vscode.languages.registerDocumentSemanticTokensProvider(
-		languageMap,
-		new SemanticTokensProvider(configs),
-		LEGEND,
-	)
-	context.subscriptions.push(provider);
-}
-
-export function deactivate() { }
