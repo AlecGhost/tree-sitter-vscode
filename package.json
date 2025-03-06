@@ -34,6 +34,12 @@
           }
         }
       }
+    ],
+    "commands": [
+      {
+        "command": "tree-sitter-vscode.reload",
+        "title": "tree-sitter-vscode: Reload config and parsers"
+      }
     ]
   },
   "scripts": {

@@ -16,14 +16,15 @@ const TOKEN_MODIFIERS = [
 const LEGEND = new vscode.SemanticTokensLegend(TOKEN_TYPES, TOKEN_MODIFIERS);
 
 type Config = { lang: string, parser: string, highlights: string, injections?: string };
-type Language = { parser: Parser, highlightQuery: Parser.Query, injectionQuery?: Parser.Query }
-type Token = { range: vscode.Range, type: string, modifiers: string[] }
+type Language = { parser: Parser, highlightQuery: Parser.Query, injectionQuery?: Parser.Query };
+type Token = { range: vscode.Range, type: string, modifiers: string[] };
 
 /**
- * Called once on extension initialization.
+ * Called once on extension initialization and again if the reload command is triggered.
  * It reads the configuration and registers the semantic tokens provider.
  */
 export function activate(context: vscode.ExtensionContext) {
+	// setup the semantic tokens provider
 	const rawConfigs = vscode.workspace.getConfiguration("tree-sitter-vscode").get("languageConfigs");
 	const configs = parseConfigs(rawConfigs);
 	const languageMap = configs.map(config => { return { language: config.lang }; });
@@ -33,6 +34,18 @@ export function activate(context: vscode.ExtensionContext) {
 		LEGEND,
 	)
 	context.subscriptions.push(provider);
+
+	// setup the reload command
+	const reload = vscode.commands.registerCommand("tree-sitter-vscode.reload",
+		() => {
+			// dispose of the old providers and clear the list of subscriptions
+			reload.dispose();
+			provider.dispose();
+			context.subscriptions.length = 0;
+			// reinitialize the extension
+			activate(context);
+		});
+	context.subscriptions.push(reload);
 }
 
 /**
