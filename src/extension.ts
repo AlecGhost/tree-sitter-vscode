@@ -18,6 +18,7 @@ const LEGEND = new vscode.SemanticTokensLegend(TOKEN_TYPES, TOKEN_MODIFIERS);
 type Config = { lang: string, parser: string, highlights: string, injections?: string };
 type Language = { parser: Parser, highlightQuery: Parser.Query, injectionQuery?: Parser.Query };
 type Token = { range: vscode.Range, type: string, modifiers: string[] };
+type Injection = { range: vscode.Range, tokens: Token[] }
 
 /**
  * Called once on extension initialization and again if the reload command is triggered.
@@ -208,13 +209,8 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 			const injections = await this.getInjections(injectionQuery, tree.rootNode);
 			// merge the injection tokens with the main tokens
 			for (const injection of injections) {
-				if (injection.length > 0) {
-					const sorted = injection.sort((a, b) =>
-						a.range.start.compareTo(b.range.start)
-					);
-					const first = sorted[0];
-					const last = sorted[sorted.length - 1];
-					const range = new vscode.Range(first.range.start, last.range.end);
+				if (injection.tokens.length > 0) {
+					const range = injection.range;
 					tokens = tokens
 						// remove all tokens that are contained in an injection
 						.filter(token => !range.contains(token.range))
@@ -223,11 +219,15 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 							if (token.range.intersection(range) !== undefined) {
 								let newTokens: Token[] = [];
 								if (token.range.start.isBefore(range.start)) {
-									const before = new vscode.Range(token.range.start, new vscode.Position(range.start.line, range.start.character - 1));
+									const before = new vscode.Range(
+										token.range.start
+										, new vscode.Position(range.start.line, range.start.character));
 									newTokens.push({ ...token, range: before });
 								}
 								if (token.range.end.isAfter(range.end)) {
-									const after = new vscode.Range(new vscode.Position(range.end.line, range.end.character + 1), token.range.end);
+									const after = new vscode.Range(
+										new vscode.Position(range.end.line, range.end.character),
+										token.range.end);
 									newTokens.push({ ...token, range: after });
 								}
 								return newTokens;
@@ -237,7 +237,7 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 						});
 				}
 			}
-			tokens = tokens.concat(injections.flat());
+			tokens = tokens.concat(injections.map(injection => injection.tokens).flat());
 		}
 		tokens = tokens
 			.map(token => {
@@ -309,50 +309,60 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 	}
 
 	/**
-	 * Determine the language to be injected into the given match.
+	 * Get the injection range and tokens for a specific match.
 	 */
-	async getInjectionLang(match: Parser.QueryMatch): Promise<Language | null> {
+	async getInjection(match: Parser.QueryMatch): Promise<Injection | null> {
+		// determine language
 		const {
 			"injection.language": injectionLanguage,
 			// TODO: add support for self and parent injections
 			// "injection.self": injectionSelf,
 			// "injection.parent": injectionParent
 		} = (match as any).setProperties || {};
-		const lang =
-			// a hard coded language overrides all other methods
-			(typeof injectionLanguage == "string" ? injectionLanguage : undefined)
-			// dynamically determined language
-			|| match.captures.find(capture => capture.name === "injection.language")?.node.text
-			// custom language determination by capture name
-			|| match.captures.find(capture => this.configs.map(config => config.lang).includes(capture.name))?.name;
-		if (lang !== undefined) {
-			const config = this.configs.find(config => config.lang === lang);
-			if (config !== undefined) {
-				if (!(lang in this.tsLangs)) {
-					this.tsLangs[lang] = await initLanguage(config);
-				}
-				return this.tsLangs[lang];
-			}
+		// the language is hard coded by "set!"
+		const hardCoded = typeof injectionLanguage == "string" ? injectionLanguage : undefined;
+		// dynamically determined language
+		const dynamic = match.captures.find(capture => capture.name === "injection.language")?.node.text;
+		// custom language determination by capture name
+		const name = match.captures.find(capture => this.configs.map(config => config.lang).includes(capture.name))?.name;
+
+		const lang = hardCoded || dynamic || name;
+		if (lang === undefined) return null;
+
+		// determine capture
+		let capture = undefined;
+		if (hardCoded !== undefined) {
+			if (match.captures.length === 0) return null;
+			// use first capture (there should only be one)
+			capture = match.captures[0];
+		} else if (dynamic !== undefined) {
+			capture = match.captures.find(capture => capture.name === "injection.content");
+		} else if (name !== undefined) {
+			capture = match.captures.find(capture => capture.name === name);
 		}
-		return null;
+		if (capture === undefined) return null;
+
+		// get language config
+		const config = this.configs.find(config => config.lang === lang);
+		if (config === undefined) return null;
+
+		if (!(lang in this.tsLangs)) {
+			this.tsLangs[lang] = await initLanguage(config);
+		}
+		const langConfig = this.tsLangs[lang];
+
+		let tokens = await this.parseToTokens(langConfig, capture.node.text, capture.node.startPosition);
+		let range = new vscode.Range(convertPosition(capture.node.startPosition), convertPosition(capture.node.endPosition));
+		return { range, tokens };
 	}
 
 	/**
 	 * Matches the given injection query against the given node and returns the highlighting tokens.
 	 * This also works for nested injections.
 	 */
-	async getInjections(injectionQuery: Parser.Query, node: Parser.SyntaxNode): Promise<Token[][]> {
+	async getInjections(injectionQuery: Parser.Query, node: Parser.SyntaxNode): Promise<Injection[]> {
 		const matches = injectionQuery.matches(node);
-		const tokens = matches
-			.map(async match => {
-				const lang = await this.getInjectionLang(match);
-				if (lang === null) {
-					return [];
-				}
-				const captureTokens = match.captures.map(
-					async capture => await this.parseToTokens(lang, capture.node.text, capture.node.startPosition));
-				return (await Promise.all(captureTokens)).flat();
-			});
-		return await Promise.all(tokens);
+		const injections = matches.map(async match => await this.getInjection(match));
+		return (await Promise.all(injections)).filter((injection): injection is Injection => injection !== null);
 	}
 }
