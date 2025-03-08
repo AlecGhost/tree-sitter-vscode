@@ -34,12 +34,13 @@ and the location of the query files on the file system in the `settings.json`.
 For each language that you want to parse,
 a dictionary with the following keys needs to be added.
 
-| Key        | Description                                                  |
-| ---------- | ------------------------------------------------------------ |
-| lang       | The language identifier                                      |
-| parser     | The path to your parser's WASM file                          |
-| highlights | The path to the file with your highlighting queries.         |
-| injections | The path to the file with your injection queries. (optional) |
+| Key           | Description                                                                                                                   |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| lang          | The language identifier                                                                                                       |
+| parser        | The path to your parser's WASM file                                                                                           |
+| highlights    | The path to the file with your highlighting queries.                                                                          |
+| injections    | The path to the file with your injection queries. (optional)                                                                  |
+| injectionOnly | Whether this language should only be highlighted in injections, and not in files of that file type. (optional, default=false) |
 
 Note, that this extension uses the WASM bindings for the Tree-sitter parsers.
 Have a look 
@@ -80,7 +81,7 @@ if a file of the language `xyz` is open.
 
 ### Reload
 
-The command `tree-sitter-vscode: Reload` will basically restart the extension,
+The command _tree-sitter-vscode: Reload_ will basically restart the extension,
 which has the following effects:
 
 - Changes in the config are taken into account.

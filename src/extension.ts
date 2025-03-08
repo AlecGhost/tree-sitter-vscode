@@ -15,7 +15,7 @@ const TOKEN_MODIFIERS = [
 ];
 const LEGEND = new vscode.SemanticTokensLegend(TOKEN_TYPES, TOKEN_MODIFIERS);
 
-type Config = { lang: string, parser: string, highlights: string, injections?: string };
+type Config = { lang: string, parser: string, highlights: string, injections?: string, injectionOnly: boolean };
 type Language = { parser: Parser, highlightQuery: Parser.Query, injectionQuery?: Parser.Query };
 type Token = { range: vscode.Range, type: string, modifiers: string[] };
 type Injection = { range: vscode.Range, tokens: Token[] }
@@ -28,7 +28,9 @@ export function activate(context: vscode.ExtensionContext) {
 	// setup the semantic tokens provider
 	const rawConfigs = vscode.workspace.getConfiguration("tree-sitter-vscode").get("languageConfigs");
 	const configs = parseConfigs(rawConfigs);
-	const languageMap = configs.map(config => { return { language: config.lang }; });
+	const languageMap = configs
+		.filter(config => !config.injectionOnly)
+		.map(config => { return { language: config.lang }; });
 	const provider = vscode.languages.registerDocumentSemanticTokensProvider(
 		languageMap,
 		new SemanticTokensProvider(configs),
@@ -63,6 +65,7 @@ function parseConfigs(configs: any): Config[] {
 		const parser = config["parser"];
 		const highlights = config["highlights"];
 		const injections = config["injections"];
+		let injectionOnly = config["injectionOnly"];
 		if (typeof lang !== "string") {
 			throw new TypeError("Expected `lang` to be a string.");
 		}
@@ -75,7 +78,13 @@ function parseConfigs(configs: any): Config[] {
 		if (injections !== undefined && typeof injections !== "string") {
 			throw new TypeError("Expected `injections` to be a string.");
 		}
-		return { lang, parser, highlights, injections };
+		if (injectionOnly !== undefined && typeof injectionOnly !== "boolean") {
+			throw new TypeError("Expected `injectionOnly` to be a boolean.");
+		}
+		if (injectionOnly === undefined) {
+			injectionOnly = false;
+		}
+		return { lang, parser, highlights, injections, injectionOnly };
 	});
 }
 

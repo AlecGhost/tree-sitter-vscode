@@ -28,7 +28,7 @@
         "title": "tree-sitter-vscode config",
         "properties": {
           "tree-sitter-vscode.languageConfigs": {
-            "description": "A list of objects with the keys \"lang\", \"parser\" and \"highlights\". Optionally, \"injections\" can be added.",
+            "description": "A list of objects with the keys \"lang\", \"parser\" and \"highlights\". Optionally, \"injections\" and \"injectionOnly\" can be added.",
             "type": "array",
             "default": []
           }
