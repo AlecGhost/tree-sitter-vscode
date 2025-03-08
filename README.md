@@ -34,12 +34,12 @@ and the location of the query files on the file system in the `settings.json`.
 For each language that you want to parse,
 a dictionary with the following keys needs to be added.
 
-|Key        |Description                                                    |
-|-----------|---------------------------------------------------------------|
-|lang       |The language identifier                                        |
-|parser     |The path to your parser's WASM file                            |
-|highlights |The path to the file with your highlighting queries.           |
-|injections |The path to the file with your injection queries. (optional)   |
+| Key        | Description                                                  |
+| ---------- | ------------------------------------------------------------ |
+| lang       | The language identifier                                      |
+| parser     | The path to your parser's WASM file                          |
+| highlights | The path to the file with your highlighting queries.         |
+| injections | The path to the file with your injection queries. (optional) |
 
 Note, that this extension uses the WASM bindings for the Tree-sitter parsers.
 Have a look 
@@ -76,6 +76,18 @@ if a file of the language `xyz` is open.
 ]
 ```
 
+## Commands
+
+### Reload
+
+The command `tree-sitter-vscode: Reload config and parsers` will basically restart the extension,
+which has the following effects:
+
+- Changes in the config are taken into account.
+- The parser is loaded from file again.
+- The query files are loaded again.
+- The semantic token provider will be re-registered (which overrules other providers for the same language).
+
 ## Injecting other languages
 
 Queries inside the injections file will be parsed and highlighted
@@ -88,7 +100,19 @@ So, to highlight something as Python code, the following query is sufficient:
 
 However, the standard way of injecting other languages with Tree-sitter is not yet supported.
 
-## Adding custom languages to VSCode
+## Known Issues
+
+### Multiple semantic token providers
+
+VSCode is not able to handle multiple semantic token providers,
+so only one is being used at a given time to highlight a file.
+It seems, like the last one to be registered wins (see [here](https://github.com/microsoft/vscode/issues/145530)).
+Since, this extension's startup time is relatively fast,
+it will usually be overruled by other providers.
+However, you can use the [Reload Command](#reload) to re-register the semantic token provider,
+and therefore use it again, over others.
+
+### Adding custom languages to VSCode
 
 Unfortunately, I haven't been able to figure out a way
 to add custom languages to VSCode natively.
@@ -98,7 +122,7 @@ which need to specify the language details.
 If you don't want to write your own plugin, however,
 you can use the following hack.
 Just go to the extensions folder of VSCode (Command _Extensions: Open Extension Folder_)
-and modify an existing extensions' `package.json` file (e. g. this extensions').
+and modify an existing extensions' `package.json` file (e. g. this extension's).
 In the `"contributes"` section, add the `"languages"` key with your language details.
 
 ```json

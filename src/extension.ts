@@ -219,15 +219,11 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 							if (token.range.intersection(range) !== undefined) {
 								let newTokens: Token[] = [];
 								if (token.range.start.isBefore(range.start)) {
-									const before = new vscode.Range(
-										token.range.start
-										, new vscode.Position(range.start.line, range.start.character));
+									const before = new vscode.Range(token.range.start, range.start);
 									newTokens.push({ ...token, range: before });
 								}
 								if (token.range.end.isAfter(range.end)) {
-									const after = new vscode.Range(
-										new vscode.Position(range.end.line, range.end.character),
-										token.range.end);
+									const after = new vscode.Range(range.end, token.range.end);
 									newTokens.push({ ...token, range: after });
 								}
 								return newTokens;
