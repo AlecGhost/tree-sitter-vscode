@@ -91,15 +91,36 @@ which has the following effects:
 
 ## Injecting other languages
 
-Queries inside the injections file will be parsed and highlighted
-by the parser with the same name as the query.
-So, to highlight something as Python code, the following query is sufficient:
+To inject other languages into a given language,
+an injection query in the `injections` file (see the [config](#configuration)) has to be added.
+
+There are multiple ways to set the highlighting language for a given query.
+The simplest way is to name the capture with the language's name.
+This is not the standard Tree-sitter way, but e.g. also supported by Neovim.
 
 ```scheme
 (my-query) @python
 ```
 
-However, the standard way of injecting other languages with Tree-sitter is not yet supported.
+Alternatively, the `#set!` directive can be used
+(see [here](https://tree-sitter.github.io/tree-sitter/3-syntax-highlighting.html#language-injection)
+and [here](https://tree-sitter.github.io/tree-sitter/using-parsers/queries/3-predicates-and-directives.html#the-set-directive)),
+which has the same effect.
+
+```scheme
+((my-query) @injection.content
+    (#set! injection.language "python"))
+```
+
+There is also the option, to determine the language dynamically using `@injection.language` and `@injection.content`.
+
+```scheme
+(my-query
+    (language-sub-query) @injection.language
+    (content-sub-query) @injection.content)
+```
+
+Other options, provided by Tree-sitter are not supported yet.
 
 ## Known Issues
 
