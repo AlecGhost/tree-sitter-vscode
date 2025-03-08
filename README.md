@@ -80,7 +80,7 @@ if a file of the language `xyz` is open.
 
 ### Reload
 
-The command `tree-sitter-vscode: Reload config and parsers` will basically restart the extension,
+The command `tree-sitter-vscode: Reload` will basically restart the extension,
 which has the following effects:
 
 - Changes in the config are taken into account.
