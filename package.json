@@ -7,7 +7,7 @@
     "url": "https://github.com/AlecGhost"
   },
   "publisher": "AlecGhost",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "Apache-2.0",
   "repository": {
     "url": "https://github.com/AlecGhost/tree-sitter-vscode"
@@ -28,9 +28,14 @@
         "title": "tree-sitter-vscode config",
         "properties": {
           "tree-sitter-vscode.languageConfigs": {
-            "description": "A list of objects with the keys \"lang\", \"parser\" and \"highlights\". Optionally, \"injections\" and \"injectionOnly\" can be added.",
+            "description": "A list of objects with the keys \"lang\", \"parser\", and \"highlights\". Optionally \"injections\", \"injectionOnly\", and \"semanticTokenTypeMappings\" can be added.",
             "type": "array",
             "default": []
+          },
+          "tree-sitter-vscode.debug": {
+            "type": "boolean",
+            "default": false,
+            "description": "Enable debug logging"
           }
         }
       }
@@ -38,7 +43,7 @@
     "commands": [
       {
         "command": "tree-sitter-vscode.reload",
-        "title": "tree-sitter-vscode: Reload"
+        "title": "Tree Sitter: Reload"
       }
     ]
   },
