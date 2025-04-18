@@ -1,5 +1,13 @@
 # Change Log
 
+## 0.2.0
+
+Supported Tree-sitter ABI version: 14
+
+### Features
+
+- Add support for relative paths
+
 ## 0.1.0
 
 Supported Tree-sitter ABI version: 14

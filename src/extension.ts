@@ -1,8 +1,7 @@
-import * as fs from "fs";
-import * as vscode from "vscode";
-import Parser from "web-tree-sitter";
-
-const OUTPUT_CHANNEL = vscode.window.createOutputChannel("Tree Sitter");
+import * as fs from 'fs';
+import path from 'path';
+import * as vscode from 'vscode';
+import Parser from 'web-tree-sitter';
 
 // VSCode default token types and modifiers from:
 // https://code.visualstudio.com/api/language-extensions/semantic-highlight-guide#standard-token-types-and-modifiers
@@ -135,55 +134,54 @@ export function activate(context: vscode.ExtensionContext) {
 export function deactivate() {}
 
 function parseConfigs(configs: any): Config[] {
-  if (!Array.isArray(configs)) {
-    throw new TypeError("Expected a list.");
-  }
-  return configs.map((config) => {
-    const lang = config["lang"];
-    const parser = config["parser"];
-    const highlights = config["highlights"];
-    const injections = config["injections"];
-    let injectionOnly = config["injectionOnly"];
-    const semanticTokenTypeMappings = config["semanticTokenTypeMappings"];
+	if (!Array.isArray(configs)) {
+		throw new TypeError("Expected a list.");
+	}
+	return configs.map(config => {
+		const lang = config["lang"];
+		const parser = config["parser"];
+		const highlights = config["highlights"];
+		const injections = config["injections"];
+		let injectionOnly = config["injectionOnly"];
+		if (typeof lang !== "string") {
+			throw new TypeError("Expected `lang` to be a string.");
+		}
+		if (typeof parser !== "string") {
+			throw new TypeError("Expected `parser` to be a string.");
+		}
+		if (typeof highlights !== "string") {
+			throw new TypeError("Expected `highlights` to be a string.");
+		}
+		if (injections !== undefined && typeof injections !== "string") {
+			throw new TypeError("Expected `injections` to be a string.");
+		}
+		if (injectionOnly !== undefined && typeof injectionOnly !== "boolean") {
+			throw new TypeError("Expected `injectionOnly` to be a boolean.");
+		}
+		if (injectionOnly === undefined) {
+			injectionOnly = false;
+		}
+		return { lang, parser, highlights, injections, injectionOnly };
+	}).map(config => {
+		const parser = toAbsolutePath(config.parser);
+		const highlights = toAbsolutePath(config.highlights);
+		const injections = config.injections !== undefined ? toAbsolutePath(config.injections) : undefined;
+		return { ...config, parser, highlights, injections };
+	});
+}
 
-    if (typeof lang !== "string") {
-      throw new TypeError("Expected `lang` to be a string.");
-    }
-    if (typeof parser !== "string") {
-      throw new TypeError("Expected `parser` to be a string.");
-    }
-    if (typeof highlights !== "string") {
-      throw new TypeError("Expected `highlights` to be a string.");
-    }
-    if (injections !== undefined && typeof injections !== "string") {
-      throw new TypeError("Expected `injections` to be a string.");
-    }
-    if (injectionOnly !== undefined && typeof injectionOnly !== "boolean") {
-      throw new TypeError("Expected `injectionOnly` to be a boolean.");
-    }
-    if (
-      semanticTokenTypeMappings !== undefined &&
-      (typeof semanticTokenTypeMappings !== "object" ||
-        semanticTokenTypeMappings === null)
-    ) {
-      throw new TypeError(
-        "Expected `semanticTokenTypeMappings` to be an object."
-      );
-    }
+function toAbsolutePath(file: string): string {
+	if (path.isAbsolute(file)) {
+		return file;
+	}
 
-    if (injectionOnly === undefined) {
-      injectionOnly = false;
-    }
+	const workspaceFolders = vscode.workspace.workspaceFolders;
+	if (!workspaceFolders || workspaceFolders.length === 0) {
+		throw new Error("Trying to resolve a relative path, but no workspace folder is open.");
+	}
 
-    return {
-      lang,
-      parser,
-      highlights,
-      injections,
-      injectionOnly,
-      semanticTokenTypeMappings,
-    };
-  });
+	const workspaceRoot = workspaceFolders[0].uri.fsPath;
+	return path.resolve(workspaceRoot, file);
 }
 
 async function initLanguage(config: Config): Promise<Language> {
