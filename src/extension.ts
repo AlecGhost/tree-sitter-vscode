@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import path from 'path';
+import path from 'path';
 import * as vscode from 'vscode';
 import Parser from 'web-tree-sitter';
 
@@ -90,7 +91,7 @@ function parseConfigs(configs: any): Config[] {
 		if (injectionOnly === undefined) {
 			injectionOnly = false;
 		}
-		return { lang, parser, highlights, injections, injectionOnly, semanticTokenTypeMappings };
+		return { lang, parser, highlights, injections, injectionOnly };
 	}).map(config => {
 		const parser = toAbsolutePath(config.parser);
 		const highlights = toAbsolutePath(config.highlights);
@@ -112,6 +113,7 @@ function toAbsolutePath(file: string): string {
 	const workspaceRoot = workspaceFolders[0].uri.fsPath;
 	return path.resolve(workspaceRoot, file);
 }
+
 
 async function initLanguage(config: Config): Promise<Language> {
 	await Parser.init().catch();
