@@ -16,10 +16,11 @@ const TOKEN_MODIFIERS = [
 ];
 const LEGEND = new vscode.SemanticTokensLegend(TOKEN_TYPES, TOKEN_MODIFIERS);
 
-type Config = { lang: string, parser: string, highlights: string, injections?: string, injectionOnly: boolean };
-type Language = { parser: Parser, highlightQuery: Parser.Query, injectionQuery?: Parser.Query };
+type SemanticTokenTypeMapping = { targetTokenType: string, targetTokenModifiers?: string[] };
+type Config = { lang: string, parser: string, highlights: string, injections?: string, injectionOnly: boolean, semanticTokenTypeMappings?: { [sourceSemanticTokenType: string]: SemanticTokenTypeMapping } };
+type Language = { parser: Parser, highlightQuery: Parser.Query, injectionQuery?: Parser.Query, semanticTokenTypeMappings?: { [sourceSemanticTokenType: string]: SemanticTokenTypeMapping }; };
 type Token = { range: vscode.Range, type: string, modifiers: string[] };
-type Injection = { range: vscode.Range, tokens: Token[] }
+type Injection = { range: vscode.Range, tokens: Token[] };
 
 /**
  * Called once on extension initialization and again if the reload command is triggered.
@@ -36,7 +37,7 @@ export function activate(context: vscode.ExtensionContext) {
 		languageMap,
 		new SemanticTokensProvider(configs),
 		LEGEND,
-	)
+	);
 	context.subscriptions.push(provider);
 
 	// setup the reload command
@@ -67,6 +68,7 @@ function parseConfigs(configs: any): Config[] {
 		const highlights = config["highlights"];
 		const injections = config["injections"];
 		let injectionOnly = config["injectionOnly"];
+		const semanticTokenTypeMappings = config["semanticTokenTypeMappings"];
 		if (typeof lang !== "string") {
 			throw new TypeError("Expected `lang` to be a string.");
 		}
@@ -82,10 +84,13 @@ function parseConfigs(configs: any): Config[] {
 		if (injectionOnly !== undefined && typeof injectionOnly !== "boolean") {
 			throw new TypeError("Expected `injectionOnly` to be a boolean.");
 		}
+		if (semanticTokenTypeMappings !== undefined && (typeof semanticTokenTypeMappings !== "object" || semanticTokenTypeMappings === null)) {
+			throw new TypeError("Expected `semanticTokenTypeMappings` to be an object.");
+		}
 		if (injectionOnly === undefined) {
 			injectionOnly = false;
 		}
-		return { lang, parser, highlights, injections, injectionOnly };
+		return { lang, parser, highlights, injections, injectionOnly, semanticTokenTypeMappings };
 	}).map(config => {
 		const parser = toAbsolutePath(config.parser);
 		const highlights = toAbsolutePath(config.highlights);
@@ -121,7 +126,7 @@ async function initLanguage(config: Config): Promise<Language> {
 		const injectionText = fs.readFileSync(config.injections, "utf-8");
 		injectionQuery = lang.query(injectionText);
 	}
-	return { parser, highlightQuery, injectionQuery };
+	return { parser, highlightQuery, injectionQuery, semanticTokenTypeMappings: config.semanticTokenTypeMappings };
 }
 
 function convertPosition(pos: Parser.Point): vscode.Position {
@@ -139,7 +144,7 @@ function addPosition(range: vscode.Range, pos: vscode.Position): vscode.Range {
 }
 
 function parseCaptureName(name: string): { type: string, modifiers: string[] } {
-	const parts = name.split(".")
+	const parts = name.split(".");
 	if (parts.length === 0) {
 		throw new Error("Capture name is empty.");
 	} else if (parts.length === 1) {
@@ -198,6 +203,7 @@ function splitToken(token: Token): Token[] {
 class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 	private readonly configs: Config[];
 	private tsLangs: { [lang: string]: Language } = {};
+	private currentLanguage: string = "";
 
 	constructor(configs: Config[]) {
 		this.configs = configs;
@@ -212,6 +218,7 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 		token: vscode.CancellationToken
 	) {
 		const lang = document.languageId;
+		this.currentLanguage = lang;
 		if (!(lang in this.tsLangs)) {
 			const config = this.configs.find(config => config.lang === lang);
 			if (config === undefined) {
@@ -266,7 +273,7 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 		}
 		tokens = tokens
 			.map(token => {
-				return { ...token, range: addPosition(token.range, convertPosition(startPosition)) }
+				return { ...token, range: addPosition(token.range, convertPosition(startPosition)) };
 			});
 		return tokens;
 	}
@@ -275,9 +282,30 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 		const unsplitTokens: Token[] = matches
 			.flatMap(match => match.captures)
 			.flatMap(capture => {
+				// Store the original capture name before splitting
+				const originalCaptureName = capture.name;
 				let { type, modifiers: modifiers } = parseCaptureName(capture.name);
 				let start = convertPosition(capture.node.startPosition);
 				let end = convertPosition(capture.node.endPosition);
+
+				// Apply token type mappings, first checking the full capture name
+				const lang = this.tsLangs[this.currentLanguage];
+
+				// First check if we have a mapping for the original unsplit name
+				if (lang?.semanticTokenTypeMappings && Object.prototype.hasOwnProperty.call(lang.semanticTokenTypeMappings, originalCaptureName)) {
+					const mapping = lang.semanticTokenTypeMappings[originalCaptureName];
+
+					type = mapping.targetTokenType;
+					modifiers = mapping.targetTokenModifiers ?? [];
+				}
+				// If no mapping for the full name, check for just the type
+				else if (lang?.semanticTokenTypeMappings && Object.prototype.hasOwnProperty.call(lang.semanticTokenTypeMappings, type)) {
+					const mapping = lang.semanticTokenTypeMappings[type];
+
+					type = mapping.targetTokenType;
+					modifiers = mapping.targetTokenModifiers ?? [];
+				}
+
 				if (TOKEN_TYPES.includes(type)) {
 					const validModifiers = modifiers.filter(modifier => TOKEN_MODIFIERS.includes(modifier));
 					const token: Token = {
