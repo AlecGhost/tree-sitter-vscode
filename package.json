@@ -43,7 +43,7 @@
     "commands": [
       {
         "command": "tree-sitter-vscode.reload",
-        "title": "Tree Sitter: Reload"
+        "title": "tree-sitter-vscode: Reload"
       }
     ]
   },
