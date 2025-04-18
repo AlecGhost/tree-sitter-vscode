@@ -7,6 +7,7 @@ Supported Tree-sitter ABI version: 14
 ### Features
 
 - Add support for relative paths
+- Add support to configure how Tree-sitter semantic token types are mapped to VS Code semantic token types
 
 ## 0.1.0
 

@@ -34,13 +34,14 @@ and the location of the query files on the file system in the `settings.json`.
 For each language that you want to parse,
 a dictionary with the following keys needs to be added.
 
-| Key           | Description                                                                                                                   |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| lang          | The language identifier                                                                                                       |
-| parser        | The path to your parser's WASM file                                                                                           |
-| highlights    | The path to the file with your highlighting queries.                                                                          |
-| injections    | The path to the file with your injection queries. (optional)                                                                  |
-| injectionOnly | Whether this language should only be highlighted in injections, and not in files of that file type. (optional, default=false) |
+| Key                       | Description                                                                                                                   |
+| -------------             | ----------------------------------------------------------------------------------------------------------------------------- |
+| lang                      | The language identifier                                                                                                       |
+| parser                    | The path to your parser's WASM file                                                                                           |
+| highlights                | The path to the file with your highlighting queries.                                                                          |
+| injections                | The path to the file with your injection queries. (optional)                                                                  |
+| injectionOnly             | Whether this language should only be highlighted in injections, and not in files of that file type. (optional, default=false) |
+| semanticTokenTypeMappings | Object of rules specifying how Tree-sitter semantic token types are mapped to VS Code semantic token types                    |
 
 Note, that this extension uses the WASM bindings for the Tree-sitter parsers.
 Have a look 
@@ -53,7 +54,22 @@ to see how you can generate those.
         "lang": "xyz",
         "parser": "/path/to/your/tree-sitter-xyz.wasm",
         "highlights": "/path/to/your/highlights.scm",
-        "injections": "/path/to/your/injections.scm"
+        "injections": "/path/to/your/injections.scm",
+        "semanticTokenTypeMappings": {
+            "constant": {
+                "targetTokenModifiers": ["declaration", "readonly"],
+                "targetTokenType": "variable"
+            },
+            "module": {
+                "targetTokenType": "namespace"
+            },
+            "variable.member": {
+                "targetTokenType": "property"
+            },
+            "variable.parameter": {
+                "targetTokenType": "parameter"
+            }
+      }
     }
 ]
 ```
