@@ -31,11 +31,6 @@
             "description": "A list of objects with the keys \"lang\", \"parser\", and \"highlights\". Optionally \"injections\", \"injectionOnly\", and \"semanticTokenTypeMappings\" can be added.",
             "type": "array",
             "default": []
-          },
-          "tree-sitter-vscode.debug": {
-            "type": "boolean",
-            "default": false,
-            "description": "Enable debug logging"
           }
         }
       }
