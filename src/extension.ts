@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import path from 'path';
 import * as vscode from 'vscode';
 import Parser from 'web-tree-sitter';
 
@@ -85,7 +86,26 @@ function parseConfigs(configs: any): Config[] {
 			injectionOnly = false;
 		}
 		return { lang, parser, highlights, injections, injectionOnly };
+	}).map(config => {
+		const parser = toAbsolutePath(config.parser);
+		const highlights = toAbsolutePath(config.highlights);
+		const injections = config.injections !== undefined ? toAbsolutePath(config.injections) : undefined;
+		return { ...config, parser, highlights, injections };
 	});
+}
+
+function toAbsolutePath(file: string): string {
+	if (path.isAbsolute(file)) {
+		return file;
+	}
+
+	const workspaceFolders = vscode.workspace.workspaceFolders;
+	if (!workspaceFolders || workspaceFolders.length === 0) {
+		throw new Error("Trying to resolve a relative path, but no workspace folder is open.");
+	}
+
+	const workspaceRoot = workspaceFolders[0].uri.fsPath;
+	return path.resolve(workspaceRoot, file);
 }
 
 
