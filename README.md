@@ -31,11 +31,12 @@ or skim through the list of the many available parsers ready to use.
 This extension does not come with any built-in parsers.
 To use your own parser, you need to specify its location
 and the location of the query files on the file system in the `settings.json`.
+The path to those files can be relative to your workspace.
 For each language that you want to parse,
 a dictionary with the following keys needs to be added.
 
 | Key                       | Description                                                                                                                   |
-| -------------             | ----------------------------------------------------------------------------------------------------------------------------- |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | lang                      | The language identifier                                                                                                       |
 | parser                    | The path to your parser's WASM file                                                                                           |
 | highlights                | The path to the file with your highlighting queries.                                                                          |
@@ -73,6 +74,14 @@ to see how you can generate those.
     }
 ]
 ```
+
+You can also activate the debug mode to have more insight in what the extension is doing with the following setting:
+
+```json
+"tree-sitter-vscode.debug": true
+```
+
+This will log information in the output channel `tree-sitter-vscode`.
 
 ### Changing the activation event
 
