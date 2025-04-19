@@ -1,5 +1,13 @@
 # Change Log
 
+## 0.2.1
+
+Supported Tree-sitter ABI version: 14
+
+### Info
+
+Sync with Marketplace.
+
 ## 0.2.0
 
 Supported Tree-sitter ABI version: 14
