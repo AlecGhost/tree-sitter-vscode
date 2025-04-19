@@ -223,7 +223,6 @@ function splitToken(token: Token): Token[] {
 class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 	private readonly configs: Config[];
 	private tsLangs: { [lang: string]: Language } = {};
-	private currentLanguage: string = "";
 
 	constructor(configs: Config[]) {
 		this.configs = configs;
@@ -238,7 +237,6 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 		token: vscode.CancellationToken
 	) {
 		const lang = document.languageId;
-		this.currentLanguage = lang;
 		if (!(lang in this.tsLangs)) {
 			const config = this.configs.find(config => config.lang === lang);
 			if (config === undefined) {
@@ -260,7 +258,7 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 		const { parser, highlightQuery, injectionQuery } = lang;
 		const tree = parser.parse(text);
 		const matches = highlightQuery.matches(tree.rootNode);
-		let tokens = this.matchesToTokens(matches);
+		let tokens = this.matchesToTokens(lang, matches);
 		if (injectionQuery !== undefined) {
 			const injections = await this.getInjections(injectionQuery, tree.rootNode);
 			// merge the injection tokens with the main tokens
@@ -298,7 +296,7 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 		return tokens;
 	}
 
-	matchesToTokens(matches: Parser.QueryMatch[]): Token[] {
+	matchesToTokens(lang: Language, matches: Parser.QueryMatch[]): Token[] {
 		const unsplitTokens: Token[] = matches
 			.flatMap(match => match.captures)
 			.flatMap(capture => {
@@ -308,11 +306,8 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 				let start = convertPosition(capture.node.startPosition);
 				let end = convertPosition(capture.node.endPosition);
 
-				// Apply token type mappings, first checking the full capture name
-				const lang = this.tsLangs[this.currentLanguage];
-
 				// First check if we have a mapping for the original unsplit name
-				if (lang?.semanticTokenTypeMappings && Object.prototype.hasOwnProperty.call(lang.semanticTokenTypeMappings, originalCaptureName)) {
+				if (lang.semanticTokenTypeMappings && Object.prototype.hasOwnProperty.call(lang.semanticTokenTypeMappings, originalCaptureName)) {
 					const mapping = lang.semanticTokenTypeMappings[originalCaptureName];
 
 					type = mapping.targetTokenType;
@@ -324,7 +319,7 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 					});
 				}
 				// If no mapping for the full name, check for just the type
-				else if (lang?.semanticTokenTypeMappings && Object.prototype.hasOwnProperty.call(lang.semanticTokenTypeMappings, type)) {
+				else if (lang.semanticTokenTypeMappings && Object.prototype.hasOwnProperty.call(lang.semanticTokenTypeMappings, type)) {
 					const mapping = lang.semanticTokenTypeMappings[type];
 
 					type = mapping.targetTokenType;
