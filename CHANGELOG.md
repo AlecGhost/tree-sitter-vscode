@@ -1,5 +1,13 @@
 # Change Log
 
+## 0.2.1
+
+Supported Tree-sitter ABI version: 14
+
+### Features
+
+- Add output channel to log debug messages if the "tree-sitter-vscode.debug" configuration setting is set to `true`
+
 ## 0.2.0
 
 Supported Tree-sitter ABI version: 14

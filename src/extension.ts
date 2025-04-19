@@ -3,6 +3,8 @@ import path from 'path';
 import * as vscode from 'vscode';
 import Parser from 'web-tree-sitter';
 
+const OUTPUT_CHANNEL = vscode.window.createOutputChannel("tree-sitter-vscode");
+
 // VSCode default token types and modifiers from:
 // https://code.visualstudio.com/api/language-extensions/semantic-highlight-guide#standard-token-types-and-modifiers
 const TOKEN_TYPES = [
@@ -22,14 +24,31 @@ type Language = { parser: Parser, highlightQuery: Parser.Query, injectionQuery?:
 type Token = { range: vscode.Range, type: string, modifiers: string[] };
 type Injection = { range: vscode.Range, tokens: Token[] };
 
+function log(messageOrCallback: string | (() => string), data?: any) {
+	// Only log in debug mode
+	const config = vscode.workspace.getConfiguration("tree-sitter-vscode");
+	const isDebugMode = config.get("debug", false);
+
+	if (isDebugMode) {
+		const timestamp = new Date().toISOString();
+		const message = typeof messageOrCallback === "function" ? messageOrCallback() : messageOrCallback;
+		OUTPUT_CHANNEL.appendLine(`[${timestamp}] ${message}`);
+		if (data) {
+			OUTPUT_CHANNEL.appendLine(JSON.stringify(data, null, 2));
+		}
+	}
+}
+
 /**
  * Called once on extension initialization and again if the reload command is triggered.
  * It reads the configuration and registers the semantic tokens provider.
  */
 export function activate(context: vscode.ExtensionContext) {
+	log("Extension activated");
 	// setup the semantic tokens provider
 	const rawConfigs = vscode.workspace.getConfiguration("tree-sitter-vscode").get("languageConfigs");
 	const configs = parseConfigs(rawConfigs);
+	log(() => { return `Configured languages: ${configs.map((c) => c.lang).join(", ")}`; });
 	const languageMap = configs
 		.filter(config => !config.injectionOnly)
 		.map(config => { return { language: config.lang }; });
@@ -115,6 +134,7 @@ function toAbsolutePath(file: string): string {
 
 
 async function initLanguage(config: Config): Promise<Language> {
+	log(() => { return `Initializing language: ${config.lang}`; });
 	await Parser.init().catch();
 	const parser = new Parser;
 	const lang = await Parser.Language.load(config.parser);
@@ -297,6 +317,11 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 
 					type = mapping.targetTokenType;
 					modifiers = mapping.targetTokenModifiers ?? [];
+
+					log(() => {
+						return `Applied type mapping for original name: ${originalCaptureName} → ${mapping.targetTokenType}${mapping.targetTokenModifiers && mapping.targetTokenModifiers.length > 0
+							? ` with modifiers: ${mapping.targetTokenModifiers.join(", ")}` : ""}`;
+					});
 				}
 				// If no mapping for the full name, check for just the type
 				else if (lang?.semanticTokenTypeMappings && Object.prototype.hasOwnProperty.call(lang.semanticTokenTypeMappings, type)) {
@@ -304,6 +329,12 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 
 					type = mapping.targetTokenType;
 					modifiers = mapping.targetTokenModifiers ?? [];
+
+					log(() => {
+						return `Applied type mapping for base type: ${type} → ${mapping.targetTokenType}${mapping.targetTokenModifiers && mapping.targetTokenModifiers.length > 0
+							? ` with modifiers: ${mapping.targetTokenModifiers.join(", ")}`
+							: ""}`;
+					});
 				}
 
 				if (TOKEN_TYPES.includes(type)) {
