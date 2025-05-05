@@ -44,9 +44,16 @@ a dictionary with the following keys needs to be added.
 | injectionOnly             | Whether this language should only be highlighted in injections, and not in files of that file type. (optional, default=false) |
 | semanticTokenTypeMappings | Object of rules specifying how Tree-sitter semantic token types are mapped to VS Code semantic token types                    |
 
-Note, that this extension uses the WASM bindings for the Tree-sitter parsers.
-Have a look 
-[here](https://github.com/tree-sitter/tree-sitter/blob/master/lib/binding_web/README.md#generate-wasm-language-files)
+Note, that this extension uses the WASM bindings for the Tree-sitter parsers. Make sure they are generated with ABI version 13 or 14 !
+
+You can generate them with the following commands, if you have the latest tree-sitter CLI
+```sh
+tree-sitter generate --abi 14
+tree-sitter build --wasm
+```
+
+Otherwise have a look
+[here](https://github.com/tree-sitter/tree-sitter/blob/master/lib/binding_web/README.md#getting-the-wasm-language-files)
 to see how you can generate those.
 
 ```json
