@@ -1,6 +1,6 @@
 # Change Log
 
-## Unreleased
+## 0.3.0
 
 Supported Tree-sitter ABI version: 14 - 15
 
