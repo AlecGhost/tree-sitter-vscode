@@ -33,7 +33,11 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["lang", "parser", "highlights"],
+              "required": [
+                "lang",
+                "parser",
+                "highlights"
+              ],
               "properties": {
                 "lang": {
                   "type": "string",
@@ -111,19 +115,19 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/mocha": "^10.0.6",
-    "@types/node": "18.x",
-    "@types/vscode": "^1.87.0",
-    "@typescript-eslint/eslint-plugin": "^7.0.2",
-    "@typescript-eslint/parser": "^7.0.2",
-    "eslint": "^8.56.0",
-    "ts-loader": "^9.5.1",
-    "typescript": "^5.3.3",
-    "webpack": "^5.90.3",
-    "webpack-cli": "^5.1.4"
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@types/vscode": "^1.100.0",
+    "@typescript-eslint/eslint-plugin": "^8.32.1",
+    "@typescript-eslint/parser": "^8.32.1",
+    "eslint": "^9.27.0",
+    "ts-loader": "^9.5.2",
+    "typescript": "^5.8.3",
+    "webpack": "^5.99.9",
+    "webpack-cli": "^6.0.1"
   },
   "dependencies": {
-    "@vscode/vsce": "^2.24.0",
-    "web-tree-sitter": "^0.21.0"
+    "@vscode/vsce": "^3.4.2",
+    "web-tree-sitter": "^0.25.4"
   }
 }

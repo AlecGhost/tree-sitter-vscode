@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import path from 'path';
 import * as vscode from 'vscode';
-import Parser from 'web-tree-sitter';
+import * as ts from 'web-tree-sitter';
+import { Parser } from 'web-tree-sitter';
 
 const OUTPUT_CHANNEL = vscode.window.createOutputChannel("tree-sitter-vscode");
 
@@ -29,8 +30,8 @@ type Config = {
 };
 type Language = {
 	parser: Parser,
-	highlightQuery: Parser.Query,
-	injectionQuery?: Parser.Query,
+	highlightQuery: ts.Query,
+	injectionQuery?: ts.Query,
 	semanticTokenTypeMappings?: { [sourceSemanticTokenType: string]: SemanticTokenTypeMapping },
 };
 type Token = {
@@ -156,19 +157,20 @@ async function initLanguage(config: Config): Promise<Language> {
 	log(() => { return `Initializing language: ${config.lang}`; });
 	await Parser.init().catch();
 	const parser = new Parser;
-	const lang = await Parser.Language.load(config.parser);
+	const lang = await ts.Language.load(config.parser);
+	log(`Tree-Sitter ABI version for ${config.lang} is ${lang.abiVersion}.`);
 	parser.setLanguage(lang);
 	const queryText = fs.readFileSync(config.highlights, "utf-8");
-	const highlightQuery = lang.query(queryText);
+	const highlightQuery = new ts.Query(lang, queryText);
 	let injectionQuery = undefined;
 	if (config.injections !== undefined) {
 		const injectionText = fs.readFileSync(config.injections, "utf-8");
-		injectionQuery = lang.query(injectionText);
+		injectionQuery = new ts.Query(lang, injectionText);
 	}
 	return { parser, highlightQuery, injectionQuery, semanticTokenTypeMappings: config.semanticTokenTypeMappings };
 }
 
-function convertPosition(pos: Parser.Point): vscode.Position {
+function convertPosition(pos: ts.Point): vscode.Position {
 	return new vscode.Position(pos.row, pos.column);
 }
 
@@ -273,9 +275,12 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 	 * Parses the given text with the given language parser and returns the highlighting tokens.
 	 * Calls `getInjections` for nested injections.
 	 */
-	async parseToTokens(lang: Language, text: string, startPosition: Parser.Point): Promise<Token[]> {
+	async parseToTokens(lang: Language, text: string, startPosition: ts.Point): Promise<Token[]> {
 		const { parser, highlightQuery, injectionQuery } = lang;
 		const tree = parser.parse(text);
+		if (tree === null) {
+			return [];
+		}
 		const matches = highlightQuery.matches(tree.rootNode);
 		let tokens = this.matchesToTokens(lang, matches);
 		if (injectionQuery !== undefined) {
@@ -315,7 +320,7 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 		return tokens;
 	}
 
-	matchesToTokens(lang: Language, matches: Parser.QueryMatch[]): Token[] {
+	matchesToTokens(lang: Language, matches: ts.QueryMatch[]): Token[] {
 		const unsplitTokens: Token[] = matches
 			.flatMap(match => match.captures)
 			.flatMap(capture => {
@@ -409,7 +414,7 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 	/**
 	 * Get the injection range and tokens for a specific match.
 	 */
-	async getInjection(match: Parser.QueryMatch): Promise<Injection | null> {
+	async getInjection(match: ts.QueryMatch): Promise<Injection | null> {
 		// determine language
 		const {
 			"injection.language": injectionLanguage,
@@ -458,7 +463,7 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 	 * Matches the given injection query against the given node and returns the highlighting tokens.
 	 * This also works for nested injections.
 	 */
-	async getInjections(injectionQuery: Parser.Query, node: Parser.SyntaxNode): Promise<Injection[]> {
+	async getInjections(injectionQuery: ts.Query, node: ts.Node): Promise<Injection[]> {
 		const matches = injectionQuery.matches(node);
 		const injections = matches.map(async match => await this.getInjection(match));
 		return (await Promise.all(injections)).filter((injection): injection is Injection => injection !== null);

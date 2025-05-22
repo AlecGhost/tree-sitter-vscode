@@ -2,10 +2,12 @@
 
 ## Unreleased
 
-Supported Tree-sitter ABI version: 14
+Supported Tree-sitter ABI version: 14 - 15
 
 ### Features
 
+- Support Tree-Sitter ABI version 15
+- Mention Tree-Sitter ABI version in README ([Samuel Roland](https://github.com/samuelroland))
 - Add extension icon
 - Add config types
 
