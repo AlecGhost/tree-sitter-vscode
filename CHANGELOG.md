@@ -1,5 +1,14 @@
 # Change Log
 
+## Unreleased
+
+Supported Tree-sitter ABI version: 14
+
+### Features
+
+- Add extension icon
+- Add config types
+
 ## 0.2.1
 
 Supported Tree-sitter ABI version: 14

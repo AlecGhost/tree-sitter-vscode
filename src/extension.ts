@@ -19,10 +19,29 @@ const TOKEN_MODIFIERS = [
 const LEGEND = new vscode.SemanticTokensLegend(TOKEN_TYPES, TOKEN_MODIFIERS);
 
 type SemanticTokenTypeMapping = { targetTokenType: string, targetTokenModifiers?: string[] };
-type Config = { lang: string, parser: string, highlights: string, injections?: string, injectionOnly: boolean, semanticTokenTypeMappings?: { [sourceSemanticTokenType: string]: SemanticTokenTypeMapping } };
-type Language = { parser: Parser, highlightQuery: Parser.Query, injectionQuery?: Parser.Query, semanticTokenTypeMappings?: { [sourceSemanticTokenType: string]: SemanticTokenTypeMapping }; };
-type Token = { range: vscode.Range, type: string, modifiers: string[] };
-type Injection = { range: vscode.Range, tokens: Token[] };
+type Config = {
+	lang: string,
+	parser: string,
+	highlights: string,
+	injections?: string,
+	injectionOnly: boolean,
+	semanticTokenTypeMappings?: { [sourceSemanticTokenType: string]: SemanticTokenTypeMapping },
+};
+type Language = {
+	parser: Parser,
+	highlightQuery: Parser.Query,
+	injectionQuery?: Parser.Query,
+	semanticTokenTypeMappings?: { [sourceSemanticTokenType: string]: SemanticTokenTypeMapping },
+};
+type Token = {
+	range: vscode.Range,
+	type: string,
+	modifiers: string[],
+};
+type Injection = {
+	range: vscode.Range,
+	tokens: Token[],
+};
 
 function log(messageOrCallback: string | (() => string), data?: any) {
 	// Only log in debug mode

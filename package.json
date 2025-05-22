@@ -31,6 +31,57 @@
           "tree-sitter-vscode.languageConfigs": {
             "description": "A list of objects with the keys \"lang\", \"parser\", and \"highlights\". Optionally \"injections\", \"injectionOnly\", and \"semanticTokenTypeMappings\" can be added.",
             "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["lang", "parser", "highlights"],
+              "properties": {
+                "lang": {
+                  "type": "string",
+                  "description": "The name of the language"
+                },
+                "parser": {
+                  "type": "string",
+                  "description": "The path to the parser `.wasm` file"
+                },
+                "highlights": {
+                  "type": "string",
+                  "description": "The path to the highlights `.scm` file"
+                },
+                "injections": {
+                  "type": [
+                    "string",
+                    null
+                  ],
+                  "description": "The path to the injections `.scm` file"
+                },
+                "injectionOnly": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Use language only for injections, not for top-level syntax highlighting"
+                },
+                "semanticTokenTypeMappings": {
+                  "type": "object",
+                  "description": "Mappings from highlighting query names to VSCode token types and modifiers",
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "targetTokenModifiers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "targetTokenType": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "targetTokenType"
+                    ]
+                  }
+                }
+              }
+            },
             "default": []
           },
           "tree-sitter-vscode.debug": {
