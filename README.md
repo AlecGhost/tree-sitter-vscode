@@ -1,6 +1,12 @@
+<p align="center">
+    <img src="https://github.com/AlecGhost/tree-sitter-vscode/blob/master/icon.png"
+        alt="tree-sitter-vscode logo"
+        style="height: 10em;">
+</p>
+
 # tree-sitter-vscode
 
-Bring the power of Tree-sitter to VSCode!
+*Bring the power of Tree-sitter to VSCode!*
 
 ## Description
 
