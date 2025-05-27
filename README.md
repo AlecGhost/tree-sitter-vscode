@@ -1,7 +1,7 @@
 <p align="center">
-    <img src="https://github.com/AlecGhost/tree-sitter-vscode/blob/master/icon.png"
+    <img src="https://raw.githubusercontent.com/AlecGhost/tree-sitter-vscode/refs/heads/master/icon.png"
         alt="tree-sitter-vscode logo"
-        style="height: 10em;">
+        height="200">
 </p>
 
 # tree-sitter-vscode
