@@ -81,6 +81,13 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(provider);
 
+	// setup the selection range provider
+	const selectionProvider = vscode.languages.registerSelectionRangeProvider(
+		languageMap,
+		new SelectionRangeProvider(configs),
+	);
+	context.subscriptions.push(selectionProvider);
+
 	// setup the folding range provider
 	let foldProvider: vscode.Disposable | undefined;
 	const foldConfigs = configs.filter(config => !config.injectionOnly && config.folds !== undefined);
@@ -99,6 +106,7 @@ export function activate(context: vscode.ExtensionContext) {
 			// dispose of the old providers and clear the list of subscriptions
 			reload.dispose();
 			provider.dispose();
+			selectionProvider.dispose();
 			foldProvider?.dispose();
 			context.subscriptions.length = 0;
 			// reinitialize the extension
@@ -492,6 +500,63 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 		const matches = injectionQuery.matches(node);
 		const injections = matches.map(async match => await this.getInjection(match));
 		return (await Promise.all(injections)).filter((injection): injection is Injection => injection !== null);
+	}
+}
+
+class SelectionRangeProvider implements vscode.SelectionRangeProvider {
+	private readonly configs: Config[];
+	private tsLangs: { [lang: string]: Language } = {};
+
+	constructor(configs: Config[]) {
+		this.configs = configs;
+	}
+
+	async provideSelectionRanges(
+		document: vscode.TextDocument,
+		positions: vscode.Position[],
+		token: vscode.CancellationToken
+	): Promise<vscode.SelectionRange[]> {
+		const lang = document.languageId;
+		if (!(lang in this.tsLangs)) {
+			const config = this.configs.find(config => config.lang === lang);
+			if (config === undefined) {
+				return [];
+			}
+			this.tsLangs[lang] = await initLanguage(config);
+		}
+		const tsLang = this.tsLangs[lang];
+
+		const tree = tsLang.parser.parse(document.getText());
+		if (tree === null) {
+			return [];
+		}
+
+		return positions.map(position => {
+			const tsPoint: ts.Point = { row: position.line, column: position.character };
+			let node: ts.Node | null = tree.rootNode.descendantForPosition(tsPoint);
+
+			// Collect ranges from innermost to outermost, skipping duplicates
+			const ranges: vscode.Range[] = [];
+			while (node !== null) {
+				const range = new vscode.Range(
+					convertPosition(node.startPosition),
+					convertPosition(node.endPosition),
+				);
+				if (ranges.length === 0 || !range.isEqual(ranges[ranges.length - 1])) {
+					ranges.push(range);
+				}
+				node = node.parent;
+			}
+
+			// Build the chain from outermost to innermost so that
+			// each SelectionRange's parent is the next larger range
+			let selectionRange: vscode.SelectionRange | undefined;
+			for (let i = ranges.length - 1; i >= 0; i--) {
+				selectionRange = new vscode.SelectionRange(ranges[i], selectionRange);
+			}
+
+			return selectionRange!;
+		});
 	}
 }
 
