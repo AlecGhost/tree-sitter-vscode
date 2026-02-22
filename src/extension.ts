@@ -25,6 +25,7 @@ type Config = {
 	parser: string,
 	highlights: string,
 	injections?: string,
+	folds?: string,
 	injectionOnly: boolean,
 	semanticTokenTypeMappings?: { [sourceSemanticTokenType: string]: SemanticTokenTypeMapping },
 };
@@ -32,6 +33,7 @@ type Language = {
 	parser: Parser,
 	highlightQuery: ts.Query,
 	injectionQuery?: ts.Query,
+	foldQuery?: ts.Query,
 	semanticTokenTypeMappings?: { [sourceSemanticTokenType: string]: SemanticTokenTypeMapping },
 };
 type Token = {
@@ -79,12 +81,25 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(provider);
 
+	// setup the folding range provider
+	let foldProvider: vscode.Disposable | undefined;
+	const foldConfigs = configs.filter(config => !config.injectionOnly && config.folds !== undefined);
+	if (foldConfigs.length > 0) {
+		const foldLanguageMap = foldConfigs.map(config => { return { language: config.lang }; });
+		foldProvider = vscode.languages.registerFoldingRangeProvider(
+			foldLanguageMap,
+			new FoldingRangeProvider(configs),
+		);
+		context.subscriptions.push(foldProvider);
+	}
+
 	// setup the reload command
 	const reload = vscode.commands.registerCommand("tree-sitter-vscode.reload",
 		() => {
 			// dispose of the old providers and clear the list of subscriptions
 			reload.dispose();
 			provider.dispose();
+			foldProvider?.dispose();
 			context.subscriptions.length = 0;
 			// reinitialize the extension
 			activate(context);
@@ -106,6 +121,7 @@ function parseConfigs(configs: any): Config[] {
 		const parser = config["parser"];
 		const highlights = config["highlights"];
 		const injections = config["injections"];
+		const folds = config["folds"];
 		let injectionOnly = config["injectionOnly"];
 		const semanticTokenTypeMappings = config["semanticTokenTypeMappings"];
 		if (typeof lang !== "string") {
@@ -120,6 +136,9 @@ function parseConfigs(configs: any): Config[] {
 		if (injections !== undefined && typeof injections !== "string") {
 			throw new TypeError("Expected `injections` to be a string.");
 		}
+		if (folds !== undefined && typeof folds !== "string") {
+			throw new TypeError("Expected `folds` to be a string.");
+		}
 		if (injectionOnly !== undefined && typeof injectionOnly !== "boolean") {
 			throw new TypeError("Expected `injectionOnly` to be a boolean.");
 		}
@@ -129,12 +148,13 @@ function parseConfigs(configs: any): Config[] {
 		if (injectionOnly === undefined) {
 			injectionOnly = false;
 		}
-		return { lang, parser, highlights, injections, injectionOnly, semanticTokenTypeMappings };
+		return { lang, parser, highlights, injections, folds, injectionOnly, semanticTokenTypeMappings };
 	}).map(config => {
 		const parser = toAbsolutePath(config.parser);
 		const highlights = toAbsolutePath(config.highlights);
 		const injections = config.injections !== undefined ? toAbsolutePath(config.injections) : undefined;
-		return { ...config, parser, highlights, injections };
+		const folds = config.folds !== undefined ? toAbsolutePath(config.folds) : undefined;
+		return { ...config, parser, highlights, injections, folds };
 	});
 }
 
@@ -167,7 +187,12 @@ async function initLanguage(config: Config): Promise<Language> {
 		const injectionText = fs.readFileSync(config.injections, "utf-8");
 		injectionQuery = new ts.Query(lang, injectionText);
 	}
-	return { parser, highlightQuery, injectionQuery, semanticTokenTypeMappings: config.semanticTokenTypeMappings };
+	let foldQuery = undefined;
+	if (config.folds !== undefined) {
+		const foldText = fs.readFileSync(config.folds, "utf-8");
+		foldQuery = new ts.Query(lang, foldText);
+	}
+	return { parser, highlightQuery, injectionQuery, foldQuery, semanticTokenTypeMappings: config.semanticTokenTypeMappings };
 }
 
 function convertPosition(pos: ts.Point): vscode.Position {
@@ -467,5 +492,73 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 		const matches = injectionQuery.matches(node);
 		const injections = matches.map(async match => await this.getInjection(match));
 		return (await Promise.all(injections)).filter((injection): injection is Injection => injection !== null);
+	}
+}
+
+class FoldingRangeProvider implements vscode.FoldingRangeProvider {
+	private readonly configs: Config[];
+	private tsLangs: { [lang: string]: Language } = {};
+
+	constructor(configs: Config[]) {
+		this.configs = configs;
+	}
+
+	async provideFoldingRanges(
+		document: vscode.TextDocument,
+		context: vscode.FoldingContext,
+		token: vscode.CancellationToken
+	): Promise<vscode.FoldingRange[]> {
+		const lang = document.languageId;
+		if (!(lang in this.tsLangs)) {
+			const config = this.configs.find(config => config.lang === lang);
+			if (config === undefined) {
+				return [];
+			}
+			this.tsLangs[lang] = await initLanguage(config);
+		}
+		const tsLang = this.tsLangs[lang];
+		if (tsLang.foldQuery === undefined) {
+			return [];
+		}
+
+		const tree = tsLang.parser.parse(document.getText());
+		if (tree === null) {
+			return [];
+		}
+
+		const matches = tsLang.foldQuery.matches(tree.rootNode);
+		const foldingRanges: vscode.FoldingRange[] = [];
+
+		for (const match of matches) {
+			for (const capture of match.captures) {
+				const startLine = capture.node.startPosition.row;
+				const endLine = capture.node.endPosition.row;
+
+				// Only create a fold if it spans at least 2 lines
+				if (endLine > startLine) {
+					const kind = this.captureNameToFoldKind(capture.name);
+					foldingRanges.push(new vscode.FoldingRange(startLine, endLine, kind));
+				}
+			}
+		}
+
+		log(() => `Provided ${foldingRanges.length} folding ranges for ${lang}`);
+		return foldingRanges;
+	}
+
+	private captureNameToFoldKind(name: string): vscode.FoldingRangeKind | undefined {
+		switch (name) {
+			case "fold.comment":
+				return vscode.FoldingRangeKind.Comment;
+			case "fold.imports":
+				return vscode.FoldingRangeKind.Imports;
+			case "fold":
+				return vscode.FoldingRangeKind.Region;
+			default:
+				if (name.startsWith("fold")) {
+					return vscode.FoldingRangeKind.Region;
+				}
+				return undefined;
+		}
 	}
 }
