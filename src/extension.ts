@@ -71,12 +71,13 @@ export function activate(context: vscode.ExtensionContext) {
 	const rawConfigs = vscode.workspace.getConfiguration("tree-sitter-vscode").get("languageConfigs");
 	const configs = parseConfigs(rawConfigs);
 	log(() => { return `Configured languages: ${configs.map((c) => c.lang).join(", ")}`; });
+	const cache = new LanguageCache(configs);
 	const languageMap = configs
 		.filter(config => !config.injectionOnly)
 		.map(config => { return { language: config.lang }; });
 	const provider = vscode.languages.registerDocumentSemanticTokensProvider(
 		languageMap,
-		new SemanticTokensProvider(configs),
+		new SemanticTokensProvider(cache),
 		LEGEND,
 	);
 	context.subscriptions.push(provider);
@@ -84,7 +85,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// setup the selection range provider
 	const selectionProvider = vscode.languages.registerSelectionRangeProvider(
 		languageMap,
-		new SelectionRangeProvider(configs),
+		new SelectionRangeProvider(cache),
 	);
 	context.subscriptions.push(selectionProvider);
 
@@ -95,7 +96,7 @@ export function activate(context: vscode.ExtensionContext) {
 		const foldLanguageMap = foldConfigs.map(config => { return { language: config.lang }; });
 		foldProvider = vscode.languages.registerFoldingRangeProvider(
 			foldLanguageMap,
-			new FoldingRangeProvider(configs),
+			new FoldingRangeProvider(cache),
 		);
 		context.subscriptions.push(foldProvider);
 	}
@@ -180,6 +181,26 @@ function toAbsolutePath(file: string): string {
 	return path.resolve(workspaceRoot, file);
 }
 
+
+class LanguageCache {
+	readonly configs: Config[];
+	private tsLangs: { [lang: string]: Language } = {};
+
+	constructor(configs: Config[]) {
+		this.configs = configs;
+	}
+
+	async getLanguage(lang: string): Promise<Language | undefined> {
+		if (!(lang in this.tsLangs)) {
+			const config = this.configs.find(config => config.lang === lang);
+			if (config === undefined) {
+				return undefined;
+			}
+			this.tsLangs[lang] = await initLanguage(config);
+		}
+		return this.tsLangs[lang];
+	}
+}
 
 async function initLanguage(config: Config): Promise<Language> {
 	log(() => { return `Initializing language: ${config.lang}`; });
@@ -275,11 +296,10 @@ function splitToken(token: Token): Token[] {
 }
 
 class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
-	private readonly configs: Config[];
-	private tsLangs: { [lang: string]: Language } = {};
+	private readonly cache: LanguageCache;
 
-	constructor(configs: Config[]) {
-		this.configs = configs;
+	constructor(cache: LanguageCache) {
+		this.cache = cache;
 	}
 
 	/**
@@ -290,15 +310,11 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 		document: vscode.TextDocument,
 		token: vscode.CancellationToken
 	) {
-		const lang = document.languageId;
-		if (!(lang in this.tsLangs)) {
-			const config = this.configs.find(config => config.lang === lang);
-			if (config === undefined) {
-				throw new Error("No config for lang provided.");
-			}
-			this.tsLangs[lang] = await initLanguage(config);
+		const tsLang = await this.cache.getLanguage(document.languageId);
+		if (tsLang === undefined) {
+			throw new Error("No config for lang provided.");
 		}
-		const tokens = await this.parseToTokens(this.tsLangs[lang], document.getText(), { row: 0, column: 0 });
+		const tokens = await this.parseToTokens(tsLang, document.getText(), { row: 0, column: 0 });
 		const builder = new vscode.SemanticTokensBuilder(LEGEND);
 		tokens.forEach(token => builder.push(token.range, token.type, token.modifiers));
 		return builder.build();
@@ -460,7 +476,7 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 		// dynamically determined language
 		const dynamic = match.captures.find(capture => capture.name === "injection.language")?.node.text;
 		// custom language determination by capture name
-		const name = match.captures.find(capture => this.configs.map(config => config.lang).includes(capture.name))?.name;
+		const name = match.captures.find(capture => this.cache.configs.map(config => config.lang).includes(capture.name))?.name;
 
 		const lang = hardCoded || dynamic || name;
 		if (lang === undefined) return null;
@@ -479,13 +495,8 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 		if (capture === undefined) return null;
 
 		// get language config
-		const config = this.configs.find(config => config.lang === lang);
-		if (config === undefined) return null;
-
-		if (!(lang in this.tsLangs)) {
-			this.tsLangs[lang] = await initLanguage(config);
-		}
-		const langConfig = this.tsLangs[lang];
+		const langConfig = await this.cache.getLanguage(lang);
+		if (langConfig === undefined) return null;
 
 		let tokens = await this.parseToTokens(langConfig, capture.node.text, capture.node.startPosition);
 		let range = new vscode.Range(convertPosition(capture.node.startPosition), convertPosition(capture.node.endPosition));
@@ -504,11 +515,10 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 }
 
 class SelectionRangeProvider implements vscode.SelectionRangeProvider {
-	private readonly configs: Config[];
-	private tsLangs: { [lang: string]: Language } = {};
+	private readonly cache: LanguageCache;
 
-	constructor(configs: Config[]) {
-		this.configs = configs;
+	constructor(cache: LanguageCache) {
+		this.cache = cache;
 	}
 
 	async provideSelectionRanges(
@@ -516,15 +526,10 @@ class SelectionRangeProvider implements vscode.SelectionRangeProvider {
 		positions: vscode.Position[],
 		token: vscode.CancellationToken
 	): Promise<vscode.SelectionRange[]> {
-		const lang = document.languageId;
-		if (!(lang in this.tsLangs)) {
-			const config = this.configs.find(config => config.lang === lang);
-			if (config === undefined) {
-				return [];
-			}
-			this.tsLangs[lang] = await initLanguage(config);
+		const tsLang = await this.cache.getLanguage(document.languageId);
+		if (tsLang === undefined) {
+			return [];
 		}
-		const tsLang = this.tsLangs[lang];
 
 		const tree = tsLang.parser.parse(document.getText());
 		if (tree === null) {
@@ -561,11 +566,10 @@ class SelectionRangeProvider implements vscode.SelectionRangeProvider {
 }
 
 class FoldingRangeProvider implements vscode.FoldingRangeProvider {
-	private readonly configs: Config[];
-	private tsLangs: { [lang: string]: Language } = {};
+	private readonly cache: LanguageCache;
 
-	constructor(configs: Config[]) {
-		this.configs = configs;
+	constructor(cache: LanguageCache) {
+		this.cache = cache;
 	}
 
 	async provideFoldingRanges(
@@ -573,15 +577,10 @@ class FoldingRangeProvider implements vscode.FoldingRangeProvider {
 		context: vscode.FoldingContext,
 		token: vscode.CancellationToken
 	): Promise<vscode.FoldingRange[]> {
-		const lang = document.languageId;
-		if (!(lang in this.tsLangs)) {
-			const config = this.configs.find(config => config.lang === lang);
-			if (config === undefined) {
-				return [];
-			}
-			this.tsLangs[lang] = await initLanguage(config);
+		const tsLang = await this.cache.getLanguage(document.languageId);
+		if (tsLang === undefined) {
+			return [];
 		}
-		const tsLang = this.tsLangs[lang];
 		if (tsLang.foldQuery === undefined) {
 			return [];
 		}
@@ -607,7 +606,7 @@ class FoldingRangeProvider implements vscode.FoldingRangeProvider {
 			}
 		}
 
-		log(() => `Provided ${foldingRanges.length} folding ranges for ${lang}`);
+		log(() => `Provided ${foldingRanges.length} folding ranges for ${document.languageId}`);
 		return foldingRanges;
 	}
 
