@@ -47,6 +47,7 @@ a dictionary with the following keys needs to be added.
 | parser                    | The path to your parser's WASM file                                                                                           |
 | highlights                | The path to the file with your highlighting queries.                                                                          |
 | injections                | The path to the file with your injection queries. (optional)                                                                  |
+| folds                     | The path to the file with your folding queries. (optional)                                                                    |
 | injectionOnly             | Whether this language should only be highlighted in injections, and not in files of that file type. (optional, default=false) |
 | semanticTokenTypeMappings | Object of rules specifying how Tree-sitter semantic token types are mapped to VS Code semantic token types                    |
 
@@ -125,8 +126,8 @@ which has the following effects:
 
 - Changes in the config are taken into account.
 - The parser is loaded from file again.
-- The query files are loaded again.
-- The semantic token provider will be re-registered (which overrules other providers for the same language).
+- The query files are loaded again (highlights, injections, and folds).
+- The semantic token provider and folding range provider will be re-registered (which overrules other providers for the same language).
 
 ## Injecting other languages
 
@@ -160,6 +161,44 @@ There is also the option, to determine the language dynamically using `@injectio
 ```
 
 Other options, provided by Tree-sitter are not supported yet.
+
+## Folding
+
+To provide code folding, a fold query in the `folds` file (see the [config](#configuration)) needs to be added.
+The query file uses the `.scm` format, following the convention established by Neovim.
+
+The following capture names are recognized:
+
+| Capture Name      | Fold Kind |
+| ----------------- | --------- |
+| `@fold`           | Region    |
+| `@fold.comment`   | Comment   |
+| `@fold.imports`   | Imports   |
+
+Any other capture name starting with `@fold` will default to `Region`.
+
+### Example
+
+For a language that has block comments and function definitions, a `folds.scm` might look like:
+
+```scheme
+(function_definition) @fold
+(block_comment) @fold.comment
+(import_statement_group) @fold.imports
+```
+
+Add the `folds` path to your language configuration:
+
+```json
+"tree-sitter-vscode.languageConfigs": [
+    {
+        "lang": "xyz",
+        "parser": "/path/to/your/tree-sitter-xyz.wasm",
+        "highlights": "/path/to/your/highlights.scm",
+        "folds": "/path/to/your/folds.scm"
+    }
+]
+```
 
 ## Known Issues
 

@@ -7,7 +7,7 @@
     "url": "https://github.com/AlecGhost"
   },
   "publisher": "AlecGhost",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "license": "Apache-2.0",
   "repository": {
     "url": "https://github.com/AlecGhost/tree-sitter-vscode"
@@ -29,7 +29,7 @@
         "title": "tree-sitter-vscode config",
         "properties": {
           "tree-sitter-vscode.languageConfigs": {
-            "description": "A list of objects with the keys \"lang\", \"parser\", and \"highlights\". Optionally \"injections\", \"injectionOnly\", and \"semanticTokenTypeMappings\" can be added.",
+            "description": "A list of objects with the keys \"lang\", \"parser\", and \"highlights\". Optionally \"injections\", \"injectionOnly\", \"folds\", and \"semanticTokenTypeMappings\" can be added.",
             "type": "array",
             "items": {
               "type": "object",
@@ -57,6 +57,13 @@
                     null
                   ],
                   "description": "The path to the injections `.scm` file"
+                },
+                "folds": {
+                  "type": [
+                    "string",
+                    null
+                  ],
+                  "description": "The path to the folds `.scm` file"
                 },
                 "injectionOnly": {
                   "type": "boolean",
@@ -105,7 +112,7 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
-    "compile": "webpack",
+    "compile": "rm -rf dist && webpack && cp node_modules/web-tree-sitter/web-tree-sitter.wasm dist/",
     "watch": "webpack --watch",
     "package": "webpack --mode production --devtool hidden-source-map",
     "compile-tests": "tsc -p . --outDir out",
@@ -128,6 +135,6 @@
   },
   "dependencies": {
     "@vscode/vsce": "^3.4.2",
-    "web-tree-sitter": "^0.25.4"
+    "web-tree-sitter": "^0.26.5"
   }
 }
