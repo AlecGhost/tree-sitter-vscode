@@ -101,6 +101,16 @@ export function activate(context: vscode.ExtensionContext) {
 		context.subscriptions.push(foldProvider);
 	}
 
+	// setup incremental parsing listeners
+	const onDidChange = vscode.workspace.onDidChangeTextDocument(event => {
+		cache.applyEdits(event);
+	});
+	context.subscriptions.push(onDidChange);
+	const onDidClose = vscode.workspace.onDidCloseTextDocument(document => {
+		cache.removeDocument(document.uri);
+	});
+	context.subscriptions.push(onDidClose);
+
 	// setup the reload command
 	const reload = vscode.commands.registerCommand("tree-sitter-vscode.reload",
 		() => {
@@ -109,6 +119,8 @@ export function activate(context: vscode.ExtensionContext) {
 			provider.dispose();
 			selectionProvider.dispose();
 			foldProvider?.dispose();
+			onDidChange.dispose();
+			onDidClose.dispose();
 			context.subscriptions.length = 0;
 			// reinitialize the extension
 			activate(context);
@@ -185,6 +197,7 @@ function toAbsolutePath(file: string): string {
 class LanguageCache {
 	readonly configs: Config[];
 	private tsLangs: { [lang: string]: Language } = {};
+	private trees: Map<string, ts.Tree> = new Map();
 
 	constructor(configs: Config[]) {
 		this.configs = configs;
@@ -199,6 +212,81 @@ class LanguageCache {
 			this.tsLangs[lang] = await initLanguage(config);
 		}
 		return this.tsLangs[lang];
+	}
+
+	/**
+	 * Returns a syntax tree for the document, using incremental parsing when possible.
+	 * The returned tree is a copy safe for the caller to use without interference
+	 * from subsequent edits.
+	 */
+	getTree(document: vscode.TextDocument): ts.Tree | null {
+		const lang = this.tsLangs[document.languageId];
+		if (!lang) return null;
+
+		const uri = document.uri.toString();
+		const cached = this.trees.get(uri);
+		if (cached) {
+			return cached.copy();
+		}
+
+		const tree = lang.parser.parse(document.getText());
+		if (tree) {
+			this.trees.set(uri, tree);
+		}
+		return tree;
+	}
+
+	/**
+	 * Applies document edits to the cached tree and re-parses incrementally.
+	 * Changes are applied in reverse document order so positions remain valid.
+	 */
+	applyEdits(event: vscode.TextDocumentChangeEvent): void {
+		const uri = event.document.uri.toString();
+		const tree = this.trees.get(uri);
+		if (!tree) return;
+
+		const lang = this.tsLangs[event.document.languageId];
+		if (!lang) return;
+
+		const changes = [...event.contentChanges].sort(
+			(a, b) => b.rangeOffset - a.rangeOffset
+		);
+
+		for (const change of changes) {
+			const startPosition: ts.Point = {
+				row: change.range.start.line,
+				column: change.range.start.character,
+			};
+			const oldEndPosition: ts.Point = {
+				row: change.range.end.line,
+				column: change.range.end.character,
+			};
+			const newLines = change.text.split("\n");
+			const newEndPosition: ts.Point = {
+				row: startPosition.row + newLines.length - 1,
+				column: newLines.length === 1
+					? startPosition.column + newLines[0].length
+					: newLines[newLines.length - 1].length,
+			};
+
+			tree.edit(new ts.Edit({
+				startIndex: change.rangeOffset,
+				oldEndIndex: change.rangeOffset + change.rangeLength,
+				newEndIndex: change.rangeOffset + change.text.length,
+				startPosition,
+				oldEndPosition,
+				newEndPosition,
+			}));
+		}
+
+		const newTree = lang.parser.parse(event.document.getText(), tree);
+		if (newTree) {
+			this.trees.set(uri, newTree);
+		}
+	}
+
+	removeDocument(uri: vscode.Uri): void {
+		this.trees.delete(uri.toString());
 	}
 }
 
@@ -314,22 +402,22 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 		if (tsLang === undefined) {
 			throw new Error("No config for lang provided.");
 		}
-		const tokens = await this.parseToTokens(tsLang, document.getText(), { row: 0, column: 0 });
+		const tree = this.cache.getTree(document);
+		if (tree === null) {
+			throw new Error("Failed to parse document.");
+		}
+		const tokens = await this.parseToTokens(tsLang, tree, { row: 0, column: 0 });
 		const builder = new vscode.SemanticTokensBuilder(LEGEND);
 		tokens.forEach(token => builder.push(token.range, token.type, token.modifiers));
 		return builder.build();
 	}
 
 	/**
-	 * Parses the given text with the given language parser and returns the highlighting tokens.
+	 * Returns the highlighting tokens for the given syntax tree.
 	 * Calls `getInjections` for nested injections.
 	 */
-	async parseToTokens(lang: Language, text: string, startPosition: ts.Point): Promise<Token[]> {
-		const { parser, highlightQuery, injectionQuery } = lang;
-		const tree = parser.parse(text);
-		if (tree === null) {
-			return [];
-		}
+	async parseToTokens(lang: Language, tree: ts.Tree, startPosition: ts.Point): Promise<Token[]> {
+		const { highlightQuery, injectionQuery } = lang;
 		const matches = highlightQuery.matches(tree.rootNode);
 		let tokens = this.matchesToTokens(lang, matches);
 		if (injectionQuery !== undefined) {
@@ -498,7 +586,9 @@ class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
 		const langConfig = await this.cache.getLanguage(lang);
 		if (langConfig === undefined) return null;
 
-		let tokens = await this.parseToTokens(langConfig, capture.node.text, capture.node.startPosition);
+		const injectionTree = langConfig.parser.parse(capture.node.text);
+		if (injectionTree === null) return null;
+		let tokens = await this.parseToTokens(langConfig, injectionTree, capture.node.startPosition);
 		let range = new vscode.Range(convertPosition(capture.node.startPosition), convertPosition(capture.node.endPosition));
 		return { range, tokens };
 	}
@@ -526,12 +616,8 @@ class SelectionRangeProvider implements vscode.SelectionRangeProvider {
 		positions: vscode.Position[],
 		token: vscode.CancellationToken
 	): Promise<vscode.SelectionRange[]> {
-		const tsLang = await this.cache.getLanguage(document.languageId);
-		if (tsLang === undefined) {
-			return [];
-		}
-
-		const tree = tsLang.parser.parse(document.getText());
+		await this.cache.getLanguage(document.languageId);
+		const tree = this.cache.getTree(document);
 		if (tree === null) {
 			return [];
 		}
@@ -585,7 +671,7 @@ class FoldingRangeProvider implements vscode.FoldingRangeProvider {
 			return [];
 		}
 
-		const tree = tsLang.parser.parse(document.getText());
+		const tree = this.cache.getTree(document);
 		if (tree === null) {
 			return [];
 		}
