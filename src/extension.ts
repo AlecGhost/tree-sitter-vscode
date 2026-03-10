@@ -646,8 +646,8 @@ class SelectionRangeProvider implements vscode.SelectionRangeProvider {
 				selectionRange = new vscode.SelectionRange(ranges[i], selectionRange);
 			}
 
-			return selectionRange!;
-		});
+			return selectionRange;
+		}).filter((selectionRange) => selectionRange !== undefined);
 	}
 }
 
