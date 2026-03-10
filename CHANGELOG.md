@@ -1,5 +1,15 @@
 # Change Log
 
+## 0.4.0
+
+Supported Tree-sitter ABI version: 14 - 15
+
+### Features
+
+- Add support for folding ranges ([kevin-hua-kraken](https://github.com/kevin-hua-kraken))
+- Add support for expand/shrink selection ([kevin-hua-kraken](https://github.com/kevin-hua-kraken))
+- Switch to incremental parsing ([kevin-hua-kraken](https://github.com/kevin-hua-kraken))
+
 ## 0.3.0
 
 Supported Tree-sitter ABI version: 14 - 15

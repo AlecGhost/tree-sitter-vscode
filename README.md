@@ -200,6 +200,11 @@ Add the `folds` path to your language configuration:
 ]
 ```
 
+## Expand and shrink selection
+
+Expanding or shrinking the selection (default shortcuts Ctrl+Shift+Right Arrow and Ctrl+Shift+Left Arrow)
+are AST-node aware.
+
 ## Known Issues
 
 ### Multiple semantic token providers
