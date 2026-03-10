@@ -680,15 +680,16 @@ class FoldingRangeProvider implements vscode.FoldingRangeProvider {
 		const foldingRanges: vscode.FoldingRange[] = [];
 
 		for (const match of matches) {
-			for (const capture of match.captures) {
-				const startLine = capture.node.startPosition.row;
-				const endLine = capture.node.endPosition.row;
+			if (match.captures.length <= 0) continue;
+			const firstCapture = match.captures[0];
+			const lastCapture = match.captures[match.captures.length - 1];
+			const startLine = firstCapture.node.startPosition.row;
+			const endLine = lastCapture.node.endPosition.row;
 
-				// Only create a fold if it spans at least 2 lines
-				if (endLine > startLine) {
-					const kind = this.captureNameToFoldKind(capture.name);
-					foldingRanges.push(new vscode.FoldingRange(startLine, endLine, kind));
-				}
+			// Only create a fold if it spans at least 2 lines
+			if (endLine > startLine) {
+				const kind = this.captureNameToFoldKind(firstCapture.name);
+				foldingRanges.push(new vscode.FoldingRange(startLine, endLine, kind));
 			}
 		}
 
